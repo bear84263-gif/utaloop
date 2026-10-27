@@ -9,7 +9,7 @@
 <meta name="mobile-web-app-capable" content="yes">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Zen+Maru+Gothic:wght@500;700&family=Klee+One:wght@400;600&family=Noto+Sans+TC:wght@400;500;700&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Zen+Maru+Gothic:wght@500;700&family=M+PLUS+Rounded+1c:wght@500;700;800&family=Noto+Sans+TC:wght@400;500;700&display=swap">
 <style>
 /* Layout: tablet landscape = player + playlist column on the left, big scrolling lyrics on the right; portrait/phone = player on top, lyrics fill the rest, playlist swaps in. */
 :root{
@@ -100,6 +100,7 @@ ruby{ruby-position:over}
 rt{font-size:.46em;letter-spacing:0;font-weight:500}
 .noruby rt{display:none}
 .notrans .tr{display:none}
+.untimed-hint{margin:0 0 1em;padding:.7em 1em;border:1.5px dashed var(--line);border-radius:14px;color:var(--muted);font-family:var(--f-ui);font-size:15px;line-height:1.7}
 .empty{color:var(--muted);text-align:center;font-size:18px;line-height:1.8;font-family:var(--f-ui)}
 body.timing .line.target{outline:3px dashed var(--accent);outline-offset:2px;color:var(--ink)}
 
@@ -166,12 +167,12 @@ dialog::backdrop{background:rgba(8,12,24,.55)}
 :root[data-skin="cream"]{
   --bg:#f5ecdc; --panel:#fffaf0; --ink:#4a3828; --muted:#8c765e; --line:#e7d8bf;
   --accent:#7f9a68; --accent-ink:#fffaf0; --hi:#c4603f; --hi-bg:#f9d7a6; --dim:#b39f85; --danger:#b4462e;
-  --f-jp:"Klee One","Zen Maru Gothic","Hiragino Maru Gothic ProN",system-ui,sans-serif;
-  --f-ui:"Zen Maru Gothic","Noto Sans TC","PingFang TC",system-ui,sans-serif;
+  --f-jp:"M PLUS Rounded 1c","Zen Maru Gothic","Hiragino Maru Gothic ProN",system-ui,sans-serif;
+  --f-ui:"M PLUS Rounded 1c","Zen Maru Gothic","Noto Sans TC","PingFang TC",system-ui,sans-serif;
   color-scheme:light}
 :root[data-skin="cream"] body{background-color:var(--bg);background-image:radial-gradient(var(--line) 1.2px,transparent 1.4px);background-size:22px 22px}
 :root[data-skin="cream"] .logo{background:var(--hi);color:var(--panel);font-family:var(--f-jp);border-radius:30%;transform:rotate(-6deg);box-shadow:inset 0 0 0 2px var(--panel),0 0 0 2px var(--hi)}
-:root[data-skin="cream"] .brand{font-family:var(--f-jp);font-weight:600}
+:root[data-skin="cream"] .brand{font-family:var(--f-jp);font-weight:800}
 :root[data-skin="cream"] .stage,:root[data-skin="cream"] .playlist{border-radius:24px;box-shadow:0 3px 0 var(--line),0 10px 30px rgba(120,90,50,.08)}
 :root[data-skin="cream"] .stage{border-width:2px}
 :root[data-skin="cream"] .lyr-tools{border-bottom:2px dashed var(--line)}
@@ -180,9 +181,9 @@ dialog::backdrop{background:rgba(8,12,24,.55)}
 :root[data-skin="cream"] .transport button{border-width:1.5px;box-shadow:0 3px 0 var(--line)}
 :root[data-skin="cream"] .transport .play{box-shadow:0 4px 0 #62794f}
 :root[data-skin="cream"] .player[data-kind="clock"],:root[data-skin="cream"] .player[data-kind="audio"]{border-radius:20px;border:2px dashed var(--line)}
-:root[data-skin="cream"] .line .jp{font-weight:600}
+:root[data-skin="cream"] .line .jp{font-weight:500}
 :root[data-skin="cream"] .line.on{background:transparent}
-:root[data-skin="cream"] .line.on .jp{display:inline;color:var(--ink);font-weight:600;background:linear-gradient(transparent 58%,var(--hi-bg) 58%);-webkit-box-decoration-break:clone;box-decoration-break:clone;padding:0 .1em}
+:root[data-skin="cream"] .line.on .jp{display:inline;color:var(--ink);font-weight:800;background:linear-gradient(transparent 58%,var(--hi-bg) 58%);-webkit-box-decoration-break:clone;box-decoration-break:clone;padding:0 .1em}
 :root[data-skin="cream"] .line.on rt{color:var(--hi)}
 :root[data-skin="cream"] .line.on .tr{color:var(--muted);margin-top:.2em}
 :root[data-skin="cream"] .song.cur{background:var(--hi-bg)}
@@ -455,6 +456,7 @@ function renderLyrics(){
     d.innerHTML=`<div class="jp">${l.jp?ruby(l.jp):'♪'}</div>`+(l.tr?`<div class="tr">${esc(l.tr)}</div>`:'');
     frag.appendChild(d);return d;
   });
+  if(!lines.some(l=>l.t!=null)){const h=document.createElement('p');h.className='untimed-hint';h.textContent='這首歌詞還沒有時間，所以不會跟著音樂跑。按上面的「對時」邊聽邊按，或在「編輯」裡按「自動找歌詞」換成有時間的版本。';lyricsBox.appendChild(h)}
   lyricsBox.appendChild(frag);
   lyricsBox.scrollTop=0;
   updateTimingTarget();
