@@ -9,7 +9,7 @@
 <meta name="mobile-web-app-capable" content="yes">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Zen+Maru+Gothic:wght@500;700&family=Noto+Sans+TC:wght@400;500;700&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Zen+Maru+Gothic:wght@500;700&family=Klee+One:wght@400;600&family=Noto+Sans+TC:wght@400;500;700&display=swap">
 <style>
 /* Layout: tablet landscape = player + playlist column on the left, big scrolling lyrics on the right; portrait/phone = player on top, lyrics fill the rest, playlist swaps in. */
 :root{
@@ -156,6 +156,39 @@ dialog::backdrop{background:rgba(8,12,24,.55)}
   .playlist{display:flex;flex:1}
 }
 @media (prefers-reduced-motion:reduce){.line{transition:none}}
+
+/* ---- editor preview ---- */
+.preview{border:1px dashed var(--line);border-radius:10px;padding:10px 12px;font-family:var(--f-jp);font-size:20px;line-height:2;max-height:200px;overflow:auto;color:var(--ink)}
+.preview .tr{font-family:var(--f-ui);font-size:13px;color:var(--muted);line-height:1.5;margin-bottom:6px}
+.preview-lbl{font-size:13px;color:var(--muted)}
+
+/* ---- 和風奶油 skin: cream washi paper, matcha accent, persimmon highlighter ---- */
+:root[data-skin="cream"]{
+  --bg:#f5ecdc; --panel:#fffaf0; --ink:#4a3828; --muted:#8c765e; --line:#e7d8bf;
+  --accent:#7f9a68; --accent-ink:#fffaf0; --hi:#c4603f; --hi-bg:#f9d7a6; --dim:#b39f85; --danger:#b4462e;
+  --f-jp:"Klee One","Zen Maru Gothic","Hiragino Maru Gothic ProN",system-ui,sans-serif;
+  --f-ui:"Zen Maru Gothic","Noto Sans TC","PingFang TC",system-ui,sans-serif;
+  color-scheme:light}
+:root[data-skin="cream"] body{background-color:var(--bg);background-image:radial-gradient(var(--line) 1.2px,transparent 1.4px);background-size:22px 22px}
+:root[data-skin="cream"] .logo{background:var(--hi);color:var(--panel);font-family:var(--f-jp);border-radius:30%;transform:rotate(-6deg);box-shadow:inset 0 0 0 2px var(--panel),0 0 0 2px var(--hi)}
+:root[data-skin="cream"] .brand{font-family:var(--f-jp);font-weight:600}
+:root[data-skin="cream"] .stage,:root[data-skin="cream"] .playlist{border-radius:24px;box-shadow:0 3px 0 var(--line),0 10px 30px rgba(120,90,50,.08)}
+:root[data-skin="cream"] .stage{border-width:2px}
+:root[data-skin="cream"] .lyr-tools{border-bottom:2px dashed var(--line)}
+:root[data-skin="cream"] .ghost,:root[data-skin="cream"] .chip{border-width:1.5px;background:var(--panel)}
+:root[data-skin="cream"] .chip[aria-pressed="true"]{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
+:root[data-skin="cream"] .transport button{border-width:1.5px;box-shadow:0 3px 0 var(--line)}
+:root[data-skin="cream"] .transport .play{box-shadow:0 4px 0 #62794f}
+:root[data-skin="cream"] .player[data-kind="clock"],:root[data-skin="cream"] .player[data-kind="audio"]{border-radius:20px;border:2px dashed var(--line)}
+:root[data-skin="cream"] .line .jp{font-weight:600}
+:root[data-skin="cream"] .line.on{background:transparent}
+:root[data-skin="cream"] .line.on .jp{display:inline;color:var(--ink);font-weight:600;background:linear-gradient(transparent 58%,var(--hi-bg) 58%);-webkit-box-decoration-break:clone;box-decoration-break:clone;padding:0 .1em}
+:root[data-skin="cream"] .line.on rt{color:var(--hi)}
+:root[data-skin="cream"] .line.on .tr{color:var(--muted);margin-top:.2em}
+:root[data-skin="cream"] .song.cur{background:var(--hi-bg)}
+:root[data-skin="cream"] .song.cur .num{color:var(--hi)}
+:root[data-skin="cream"] dialog{border-radius:24px;border-width:2px}
+:root[data-skin="cream"] .stamp{color:var(--panel)}
 </style>
 </head>
 <body>
@@ -166,6 +199,7 @@ dialog::backdrop{background:rgba(8,12,24,.55)}
       <button id="btnList" class="ghost only-narrow" type="button">歌單</button>
       <button id="btnBatch" class="ghost" type="button">⚡ 一次加入多首</button>
       <button id="btnAdd" class="ghost" type="button">＋ 新增歌曲</button>
+      <button id="btnSkin" class="ghost" type="button">風格：簡約</button>
       <button id="btnSettings" class="ghost" type="button">備份</button>
     </div>
   </header>
@@ -235,7 +269,7 @@ dialog::backdrop{background:rgba(8,12,24,.55)}
       <span class="hint">音檔只存在這台裝置裡。YouTube 連結和音檔填一個就好。</span>
     </div>
     <p class="field-err" id="ytErr" hidden>看不懂這個連結。請貼 YouTube 影片頁面的網址，例如 https://youtu.be/xxxxxxxxxxx</p>
-    <label>歌詞<textarea id="fLyrics" rows="12" spellcheck="false" placeholder="[00:12.50] 夜{よる}の街{まち}を歩{ある}く&#10;> 走在夜晚的街道"></textarea></label>
+    <label>歌詞<textarea id="fLyrics" rows="8" spellcheck="false" placeholder="[00:12.50] 夜{よる}の街{まち}を歩{ある}く&#10;> 走在夜晚的街道"></textarea></label>
     <div class="row tools-row">
       <button type="button" id="fFind" class="ghost">🔍 自動找歌詞</button>
       <button type="button" id="fKana" class="ghost">あ 自動標假名</button>
@@ -244,6 +278,8 @@ dialog::backdrop{background:rgba(8,12,24,.55)}
       <button type="button" id="fLater" class="ghost">延後 0.5 秒</button>
     </div>
     <div id="fResults" class="results" hidden></div>
+    <span class="preview-lbl">預覽（歌詞畫面會長這樣）</span>
+    <div id="fPreview" class="preview"></div>
     <div class="row"><label for="fLrc" style="flex-direction:row;align-items:center;font-weight:400;color:var(--muted)">從 LRC 檔載入：</label><input type="file" id="fLrc"></div>
     <details class="help">
       <summary>歌詞怎麼寫？</summary>
@@ -325,7 +361,7 @@ const SAMPLE={id:'sample',title:'さくら さくら（範例）',artist:'日本
 
 let saved=null;
 try{saved=JSON.parse(localStorage.getItem(KEY)||'null')}catch(e){}
-const S=Object.assign({songs:[SAMPLE],cur:0,mode:'all',repeat:1,ruby:true,trans:true,size:1,smallVideo:false},saved||{});
+const S=Object.assign({songs:[SAMPLE],cur:0,mode:'all',repeat:1,ruby:true,trans:true,size:1,smallVideo:false,skin:'simple'},saved||{});
 if(!Array.isArray(S.songs))S.songs=[SAMPLE];
 if(!(S.cur>=0&&S.cur<S.songs.length))S.cur=0;
 function save(){try{localStorage.setItem(KEY,JSON.stringify(S))}catch(e){}}
@@ -386,6 +422,8 @@ function toast(msg,ms){
 }
 
 function applyView(){
+  document.documentElement.dataset.skin=S.skin==='cream'?'cream':'simple';
+  $('#btnSkin').textContent='風格：'+(S.skin==='cream'?'和風奶油':'簡約');
   lyricsBox.classList.toggle('noruby',!S.ruby);
   lyricsBox.classList.toggle('notrans',!S.trans);
   $('#tgRuby').setAttribute('aria-pressed',S.ruby);
@@ -691,7 +729,7 @@ $('#fAudio').addEventListener('change',e=>{
 $('#fAudioClear').onclick=()=>{edAudio={act:'clear',file:null};$('#fAudio').value='';showAudioName(null)};
 $('#fLrc').addEventListener('change',e=>{
   const f=e.target.files[0];if(!f)return;
-  f.text().then(t=>{$('#fLyrics').value=t;if(!$('#fTitle').value){const m=t.match(/\[ti:(.*?)\]/i);if(m)$('#fTitle').value=m[1].trim()}if(!$('#fArtist').value){const m=t.match(/\[ar:(.*?)\]/i);if(m)$('#fArtist').value=m[1].trim()}});
+  f.text().then(t=>{$('#fLyrics').value=t;updatePreview();if(!$('#fTitle').value){const m=t.match(/\[ti:(.*?)\]/i);if(m)$('#fTitle').value=m[1].trim()}if(!$('#fArtist').value){const m=t.match(/\[ar:(.*?)\]/i);if(m)$('#fArtist').value=m[1].trim()}});
 });
 
 // ---------- auto lyrics (LRCLIB) ----------
@@ -777,8 +815,8 @@ $('#fFind').onclick=async()=>{
     b.onclick=async()=>{
       $('#fLyrics').value=x.syncedLyrics||x.plainLyrics;box.hidden=true;
       if(!$('#fArtist').value&&x.artistName)$('#fArtist').value=x.artistName;
-      try{$('#fLyrics').value=await addKana($('#fLyrics').value);toast('已套用歌詞並標好假名，記得按「儲存」')}
-      catch(e){toast('已套用歌詞，但假名字典載入失敗',5000)}
+      try{$('#fLyrics').value=await addKana($('#fLyrics').value);updatePreview();toast('已套用歌詞並標好假名，記得按「儲存」')}
+      catch(e){updatePreview();toast('已套用歌詞，但假名字典載入失敗',5000)}
     };
     box.appendChild(b);
   });
@@ -786,12 +824,12 @@ $('#fFind').onclick=async()=>{
 $('#fKana').onclick=async()=>{
   const ta=$('#fLyrics');if(!ta.value.trim()){toast('歌詞是空的');return}
   $('#fKana').disabled=true;
-  try{ta.value=await addKana(ta.value);toast('假名標好了（已經標過的行不會動）')}
+  try{ta.value=await addKana(ta.value);updatePreview();toast('假名標好了（已經標過的行不會動）')}
   catch(e){toast('假名字典載入失敗，請確認有網路後再試',5000)}
   $('#fKana').disabled=false;
 };
-$('#fEarlier').onclick=()=>{$('#fLyrics').value=shiftStamps($('#fLyrics').value,-0.5);toast('整首提早 0.5 秒，按「儲存」生效')};
-$('#fLater').onclick=()=>{$('#fLyrics').value=shiftStamps($('#fLyrics').value,0.5);toast('整首延後 0.5 秒，按「儲存」生效')};
+$('#fEarlier').onclick=()=>{$('#fLyrics').value=shiftStamps($('#fLyrics').value,-0.5);updatePreview();toast('整首提早 0.5 秒，按「儲存」生效')};
+$('#fLater').onclick=()=>{$('#fLyrics').value=shiftStamps($('#fLyrics').value,0.5);updatePreview();toast('整首延後 0.5 秒，按「儲存」生效')};
 
 // ---------- batch add ----------
 const baseName=n=>n.replace(/\.[^.]+$/,'');
@@ -941,6 +979,13 @@ $('#fontDown').onclick=()=>{S.size=Math.max(0.7,Math.round((S.size-0.1)*10)/10);
 $('#btnTiming').onclick=()=>timing?stopTiming():startTiming();
 $('#btnEditCur').onclick=()=>{if(S.songs.length)openEditor(S.cur);else openEditor(-1)};
 $('#btnAdd').onclick=()=>openEditor(-1);
+$('#btnSkin').onclick=()=>{S.skin=S.skin==='cream'?'simple':'cream';save();applyView()};
+function updatePreview(){
+  const ls=parseLyrics($('#fLyrics').value).slice(0,6);
+  $('#fPreview').innerHTML=ls.length?ls.map(l=>`<div>${l.jp?ruby(l.jp):'♪'}</div>`+(l.tr?`<div class="tr">${esc(l.tr)}</div>`:'')).join(''):'<span class="preview-lbl">貼上歌詞後會顯示在這裡</span>';
+}
+$('#fLyrics').addEventListener('input',updatePreview);
+new MutationObserver(()=>{if($('#editor').open)updatePreview()}).observe($('#editor'),{attributes:true,attributeFilter:['open']});
 $('#btnSettings').onclick=()=>{$('#pasteImport').value='';$('#settings').showModal()};
 $('#btnList').onclick=()=>{document.body.classList.toggle('show-list');renderPlaylist()};
 $('#tkStamp').onclick=stamp;
