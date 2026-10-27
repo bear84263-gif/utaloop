@@ -126,6 +126,15 @@ dialog::backdrop{background:rgba(8,12,24,.55)}
 .help summary{cursor:pointer;font-weight:500}
 .help code{font-family:var(--f-jp);background:var(--bg);padding:1px 6px;border-radius:6px}
 .help ul{margin:8px 0 0;padding-left:20px}
+.results{display:flex;flex-direction:column;gap:6px;border:1px solid var(--line);border-radius:10px;padding:8px;max-height:260px;overflow:auto}
+.results button{text-align:left;border:1px solid var(--line);background:var(--bg);border-radius:8px;padding:8px 10px;display:flex;flex-direction:column;gap:2px}
+.results .r1{font-family:var(--f-jp);font-weight:700}
+.results .r2{font-size:12px;color:var(--muted)}
+.results .note{color:var(--muted);font-size:14px;padding:4px}
+.blog{border:1px solid var(--line);border-radius:10px;padding:10px 12px;font-size:14px;line-height:1.7;max-height:200px;overflow:auto;background:var(--bg);overflow-wrap:anywhere}
+.dlg label.check{flex-direction:row;align-items:center;gap:8px;font-weight:400}
+.dlg label.check input{width:20px;height:20px}
+.tools-row .ghost{min-height:36px;padding:6px 12px;font-size:14px}
 .audio-field{display:flex;flex-direction:column;gap:6px}
 .audio-field .lbl{font-weight:500}
 .audio-field .hint{font-size:13px;color:var(--muted)}
@@ -155,6 +164,7 @@ dialog::backdrop{background:rgba(8,12,24,.55)}
     <div class="brand"><span class="logo" aria-hidden="true">歌</span><span>うたループ</span></div>
     <div class="top-actions">
       <button id="btnList" class="ghost only-narrow" type="button">歌單</button>
+      <button id="btnBatch" class="ghost" type="button">⚡ 一次加入多首</button>
       <button id="btnAdd" class="ghost" type="button">＋ 新增歌曲</button>
       <button id="btnSettings" class="ghost" type="button">備份</button>
     </div>
@@ -226,7 +236,15 @@ dialog::backdrop{background:rgba(8,12,24,.55)}
     </div>
     <p class="field-err" id="ytErr" hidden>看不懂這個連結。請貼 YouTube 影片頁面的網址，例如 https://youtu.be/xxxxxxxxxxx</p>
     <label>歌詞<textarea id="fLyrics" rows="12" spellcheck="false" placeholder="[00:12.50] 夜{よる}の街{まち}を歩{ある}く&#10;> 走在夜晚的街道"></textarea></label>
-    <div class="row"><label for="fLrc" style="flex-direction:row;align-items:center;font-weight:400;color:var(--muted)">從 LRC 檔載入：</label><input type="file" id="fLrc" accept=".lrc,.txt,text/plain"></div>
+    <div class="row tools-row">
+      <button type="button" id="fFind" class="ghost">🔍 自動找歌詞</button>
+      <button type="button" id="fKana" class="ghost">あ 自動標假名</button>
+      <span class="grow"></span>
+      <button type="button" id="fEarlier" class="ghost">整首提早 0.5 秒</button>
+      <button type="button" id="fLater" class="ghost">延後 0.5 秒</button>
+    </div>
+    <div id="fResults" class="results" hidden></div>
+    <div class="row"><label for="fLrc" style="flex-direction:row;align-items:center;font-weight:400;color:var(--muted)">從 LRC 檔載入：</label><input type="file" id="fLrc"></div>
     <details class="help">
       <summary>歌詞怎麼寫？</summary>
       <ul>
@@ -237,6 +255,7 @@ dialog::backdrop{background:rgba(8,12,24,.55)}
         <li>不知道時間沒關係，先不寫，存好後按「對時」邊聽邊按就好。</li>
         <li>網路上下載的 LRC 歌詞檔可以直接貼進來。</li>
         <li>選音檔時如果歌名還空著，會自動用檔名當歌名。</li>
+        <li>「自動找歌詞」會從免費的 LRCLIB 歌詞資料庫找；找到的時間如果整首差一點，用「提早／延後 0.5 秒」調整。</li>
       </ul>
     </details>
     <div class="row">
@@ -246,6 +265,21 @@ dialog::backdrop{background:rgba(8,12,24,.55)}
       <button type="submit" class="primary">儲存</button>
     </div>
   </form>
+</dialog>
+
+<dialog id="batch">
+  <div class="dlg">
+    <h2>一次加入多首</h2>
+    <h3>選音檔</h3>
+    <p>可以一次選很多個。同名的 .lrc 歌詞檔一起選會自動配對。檔名是「歌手 - 歌名」的話會自動分開。</p>
+    <input type="file" id="bFiles" multiple>
+    <h3>或貼 YouTube 連結</h3>
+    <p>一行一個。歌名會自動抓；想自己取名，就寫在連結前面，例如「マリーゴールド https://youtu.be/…」。</p>
+    <textarea id="bLinks" rows="5" spellcheck="false" placeholder="https://youtu.be/…&#10;https://www.youtube.com/watch?v=…"></textarea>
+    <label class="check"><input type="checkbox" id="bAuto" checked> 自動找歌詞，並標上假名</label>
+    <div id="bLog" class="blog" hidden></div>
+    <div class="row end"><button id="bClose" class="ghost" type="button">關閉</button><button id="bGo" class="primary" type="button">加入歌單</button></div>
+  </div>
 </dialog>
 
 <dialog id="settings">
@@ -533,7 +567,7 @@ window.onYouTubeIframeAPIReady=function(){
       onStateChange(e){
         if(kind!=='yt')return;
         ytPlaying=e.data===1;
-        if(e.data===1){errStreak=0;keepAwake()}
+        if(e.data===1){errStreak=0;keepAwake();const s=S.songs[S.cur];if(s&&s.ytAuto&&s.title==='YouTube 影片'&&yt.getVideoData){const d=yt.getVideoData();if(d&&d.title){Object.assign(s,cleanYtTitle(d.title,d.author));s.ytAuto=false;save();renderNow();renderPlaylist()}}}
         if(e.data===0)onEnded();
         updatePlayBtn();
       },
@@ -622,7 +656,7 @@ $('#edForm').addEventListener('submit',async e=>{
   let audioChanged=false;
   if(edAudio.act==='set'){
     try{await DB.put(sid,edAudio.file)}catch(err){toast('存不下這個音檔，可能是裝置空間不夠',5000);return}
-    data.audio={name:edAudio.file.name,size:edAudio.file.size};audioChanged=true;
+    data.audio={name:edAudio.file.name,size:edAudio.file.size};data.dur=await audioDuration(edAudio.file);audioChanged=true;
   }else if(edAudio.act==='clear'){await DB.del(sid);data.audio=null;audioChanged=true}
   if(editIdx<0){
     S.songs.push(Object.assign({id:sid},data));save();$('#editor').close();
@@ -660,6 +694,194 @@ $('#fLrc').addEventListener('change',e=>{
   f.text().then(t=>{$('#fLyrics').value=t;if(!$('#fTitle').value){const m=t.match(/\[ti:(.*?)\]/i);if(m)$('#fTitle').value=m[1].trim()}if(!$('#fArtist').value){const m=t.match(/\[ar:(.*?)\]/i);if(m)$('#fArtist').value=m[1].trim()}});
 });
 
+// ---------- auto lyrics (LRCLIB) ----------
+async function lrclib(params){
+  const r=await fetch('https://lrclib.net/api/search?'+new URLSearchParams(params));
+  if(!r.ok)throw new Error('http '+r.status);
+  const list=await r.json();
+  return Array.isArray(list)?list.filter(x=>!x.instrumental&&(x.syncedLyrics||x.plainLyrics)):[];
+}
+async function searchLyrics(title,artist){
+  let list=[];
+  if(artist)list=await lrclib({track_name:title,artist_name:artist});
+  if(!list.length)list=await lrclib(artist?{q:title+' '+artist}:{track_name:title});
+  if(!list.length&&artist)list=await lrclib({track_name:title});
+  return list;
+}
+function rankLyrics(list,dur){
+  const score=x=>(x.syncedLyrics?100:0)-(dur&&x.duration?Math.min(90,Math.abs(dur-x.duration)*3):0);
+  return list.slice().sort((a,b)=>score(b)-score(a));
+}
+
+// ---------- auto furigana (kuromoji, dictionary served next to this page) ----------
+const KJ='㐀-鿿豈-﫿々〆ヵヶ';
+const KANJI=new RegExp('['+KJ+']');
+const toHira=s=>s.replace(/[ァ-ヶ]/g,c=>String.fromCharCode(c.charCodeAt(0)-0x60));
+const reEsc=s=>s.replace(/[.*+?^${}()|[\]\\]/g,'\\$&');
+let tokP=null;
+function getTokenizer(){
+  if(tokP)return tokP;
+  tokP=new Promise((res,rej)=>{
+    const go=()=>{try{kuromoji.builder({dicPath:'dict/'}).build((e,t)=>e?rej(e):res(t))}catch(e){rej(e)}};
+    if(window.kuromoji)go();
+    else{const sc=document.createElement('script');sc.src='kuromoji.js';sc.onload=go;sc.onerror=()=>rej(new Error('load'));document.head.appendChild(sc)}
+  });
+  tokP.catch(()=>{tokP=null});
+  return tokP;
+}
+function tokenRuby(surface,reading,prevKanji){
+  if(!KANJI.test(surface)||!reading||reading==='*')return surface;
+  const r=toHira(reading);
+  const parts=surface.match(new RegExp('['+KJ+']+|[^'+KJ+']+','g'));
+  const m=r.match(new RegExp('^'+parts.map(p=>KANJI.test(p)?'(.+?)':reEsc(toHira(p))).join('')+'$'));
+  if(!m)return '｜'+surface+'{'+r+'}';
+  let g=1;
+  return parts.map((p,i)=>KANJI.test(p)?((i===0&&prevKanji)?'｜':'')+p+'{'+m[g++]+'}':p).join('');
+}
+function annotate(tok,text){
+  let out='',prev=false;
+  for(const k of tok.tokenize(text)){
+    const x=tokenRuby(k.surface_form,k.reading,prev);
+    out+=x;prev=x===k.surface_form&&KANJI.test(k.surface_form.slice(-1));
+  }
+  return out;
+}
+async function addKana(text){
+  if(!tokP&&!window.__kanaWarned){window.__kanaWarned=true;toast('第一次使用要下載假名字典（約 18 MB），請稍等…',6000)}
+  const tok=await getTokenizer();
+  return String(text).split('\n').map(line=>{
+    if(/^\s*[>＞]/.test(line)||/[{《]/.test(line))return line;
+    const m=line.match(/^(\s*(?:\[[^\]]*\]\s*)*)(.*)$/);
+    return m[1]+annotate(tok,m[2]);
+  }).join('\n');
+}
+function shiftStamps(text,d){
+  return String(text).replace(/\[(\d{1,3}):(\d{1,2}(?:[.:]\d{1,3})?)\]/g,(m,a,b)=>'['+fmtStamp(Math.max(0,+a*60+parseFloat(b.replace(':','.'))+d))+']');
+}
+
+// editor buttons
+$('#fFind').onclick=async()=>{
+  const title=$('#fTitle').value.trim(),artist=$('#fArtist').value.trim();
+  const box=$('#fResults');box.hidden=false;
+  if(!title){box.innerHTML='<div class="note">先填歌名，再按「自動找歌詞」。</div>';return}
+  box.innerHTML='<div class="note">搜尋中…</div>';
+  let list;
+  try{list=await searchLyrics(title,artist)}catch(e){box.innerHTML='<div class="note">連不上歌詞資料庫，請確認有網路，或稍後再試。</div>';return}
+  if(!list.length){box.innerHTML='<div class="note">找不到這首。試試看只填歌名、改用日文原名，或把歌手名字寫完整。</div>';return}
+  const cur=editIdx>=0?S.songs[editIdx]:null;
+  list=rankLyrics(list,cur&&cur.dur).slice(0,8);
+  box.innerHTML='<div class="note">點一個版本套用（有「時間軸」的會自動跟著歌走）：</div>';
+  list.forEach(x=>{
+    const b=document.createElement('button');b.type='button';
+    b.innerHTML=`<span class="r1">${esc(x.trackName||'')}</span><span class="r2">${esc(x.artistName||'')}${x.albumName?' · '+esc(x.albumName):''} · ${fmtShort(x.duration)} · ${x.syncedLyrics?'有時間軸':'沒有時間軸'}</span>`;
+    b.onclick=async()=>{
+      $('#fLyrics').value=x.syncedLyrics||x.plainLyrics;box.hidden=true;
+      if(!$('#fArtist').value&&x.artistName)$('#fArtist').value=x.artistName;
+      try{$('#fLyrics').value=await addKana($('#fLyrics').value);toast('已套用歌詞並標好假名，記得按「儲存」')}
+      catch(e){toast('已套用歌詞，但假名字典載入失敗',5000)}
+    };
+    box.appendChild(b);
+  });
+};
+$('#fKana').onclick=async()=>{
+  const ta=$('#fLyrics');if(!ta.value.trim()){toast('歌詞是空的');return}
+  $('#fKana').disabled=true;
+  try{ta.value=await addKana(ta.value);toast('假名標好了（已經標過的行不會動）')}
+  catch(e){toast('假名字典載入失敗，請確認有網路後再試',5000)}
+  $('#fKana').disabled=false;
+};
+$('#fEarlier').onclick=()=>{$('#fLyrics').value=shiftStamps($('#fLyrics').value,-0.5);toast('整首提早 0.5 秒，按「儲存」生效')};
+$('#fLater').onclick=()=>{$('#fLyrics').value=shiftStamps($('#fLyrics').value,0.5);toast('整首延後 0.5 秒，按「儲存」生效')};
+
+// ---------- batch add ----------
+const baseName=n=>n.replace(/\.[^.]+$/,'');
+function parseFileName(n){
+  const b=baseName(n).replace(/^\d{1,3}[\s._-]+/,'').trim();
+  const d=b.split(/\s+[-–—]\s+/);
+  return d.length>=2?{artist:d[0].trim(),title:d.slice(1).join(' - ').trim()}:{artist:'',title:b};
+}
+function audioDuration(f){
+  return new Promise(res=>{
+    const a=new Audio();const u=URL.createObjectURL(f);let done=false;
+    const fin=v=>{if(done)return;done=true;URL.revokeObjectURL(u);res(v||0)};
+    a.preload='metadata';a.onloadedmetadata=()=>fin(isFinite(a.duration)?a.duration:0);a.onerror=()=>fin(0);
+    setTimeout(()=>fin(0),5000);a.src=u;
+  });
+}
+function cleanYtTitle(t,author){
+  t=String(t||'');let title=t,artist=String(author||'').replace(/\s*-\s*Topic$/i,'').replace(/\s*(official|オフィシャル|公式).*$/i,'').trim();
+  const q=t.match(/[『「]([^』」]+)[』」]/);
+  if(q){
+    title=q[1];
+    const pre=t.slice(0,t.indexOf(q[0])).replace(/[【\[][^】\]]*[】\]]/g,'').replace(/[\s\-–—／/|]+$/,'').trim();
+    if(pre)artist=pre;
+  }else{
+    title=t.replace(/[【\[(（][^】\])）]*[】\])）]/g,' ').replace(/\b(official|music|video|mv|pv|lyrics?|audio|full)\b/ig,' ').trim();
+    const d=title.split(/\s+[-–—／/|]\s+/);
+    if(d.length>=2){artist=d[0].trim();title=d.slice(1).join(' ').trim()}
+  }
+  title=title.replace(/\s+/g,' ').replace(/^[\s\-–—]+|[\s\-–—]+$/g,'').trim();
+  return {title:title||t,artist};
+}
+async function ytMeta(id){
+  const watch='https://www.youtube.com/watch?v='+id;
+  for(const u of ['https://www.youtube.com/oembed?format=json&url='+encodeURIComponent(watch),'https://noembed.com/embed?url='+encodeURIComponent(watch)]){
+    try{const r=await fetch(u);if(r.ok){const j=await r.json();if(j&&j.title)return cleanYtTitle(j.title,j.author_name)}}catch(e){}
+  }
+  return null;
+}
+function blog(msg){const b=$('#bLog');b.hidden=false;const d=document.createElement('div');d.textContent=msg;b.appendChild(d);b.scrollTop=b.scrollHeight}
+let batchBusy=false;
+$('#btnBatch').onclick=()=>{if(!batchBusy){$('#bLog').innerHTML='';$('#bLog').hidden=true;$('#bFiles').value='';$('#bLinks').value=''}$('#batch').showModal()};
+$('#bClose').onclick=()=>$('#batch').close();
+$('#bGo').onclick=async()=>{
+  if(batchBusy)return;
+  const files=[...$('#bFiles').files];
+  const links=$('#bLinks').value.split('\n').map(x=>x.trim()).filter(Boolean);
+  if(!files.length&&!links.length){toast('先選音檔或貼連結');return}
+  batchBusy=true;$('#bGo').disabled=true;$('#bLog').innerHTML='';
+  const auto=$('#bAuto').checked;
+  const wasEmpty=!S.songs.length;
+  const lrc={};
+  for(const f of files.filter(f=>/\.lrc$/i.test(f.name)))lrc[baseName(f.name).toLowerCase()]=await f.text();
+  const added=[];
+  for(const f of files.filter(f=>!/\.lrc$/i.test(f.name))){
+    const id=uid(),meta=parseFileName(f.name);
+    try{await DB.put(id,f)}catch(e){blog('✗ 存不下 '+f.name+'（裝置空間可能不夠）');continue}
+    const song={id,title:meta.title,artist:meta.artist,yt:'',lyrics:lrc[baseName(f.name).toLowerCase()]||'',audio:{name:f.name,size:f.size},dur:await audioDuration(f)};
+    S.songs.push(song);added.push(song);save();blog('＋ '+song.title+(song.lyrics?'（已配對 .lrc）':''));
+  }
+  for(const line of links){
+    const id=ytId((line.match(/\S+$/)||[''])[0])||ytId(line);
+    if(!id){blog('✗ 看不懂這行：'+line);continue}
+    const label=line.replace(/\S*(?:youtu\.be|youtube\.com)\S*/g,'').trim();
+    const meta=label?{title:label,artist:''}:(await ytMeta(id))||{title:'YouTube 影片',artist:''};
+    const song={id:uid(),title:meta.title,artist:meta.artist,yt:'https://youtu.be/'+id,lyrics:'',ytAuto:!label};
+    S.songs.push(song);added.push(song);save();blog('＋ '+song.title);
+  }
+  renderPlaylist();
+  if(wasEmpty&&added.length)loadSong(0,false);
+  if(auto){
+    for(const s of added){
+      if(!s.lyrics&&s.title!=='YouTube 影片'){
+        try{
+          const list=rankLyrics(await searchLyrics(s.title,s.artist),s.dur);
+          if(list.length){s.lyrics=list[0].syncedLyrics||list[0].plainLyrics;if(!s.artist&&list[0].artistName)s.artist=list[0].artistName;blog('✓ 找到歌詞：'+s.title+(list[0].syncedLyrics?'':'（沒有時間軸，可以用「對時」）'))}
+          else blog('✗ 找不到歌詞：'+s.title+'（可以在「編輯」改歌名再找）');
+        }catch(e){blog('✗ 連不上歌詞資料庫：'+s.title)}
+      }
+      if(s.lyrics){
+        try{s.lyrics=await addKana(s.lyrics)}catch(e){blog('✗ 假名字典載入失敗');}
+      }
+      save();
+      if(S.songs[S.cur]===s){renderLyrics();renderNow()}
+      renderPlaylist();
+    }
+  }
+  blog(`完成！加入了 ${added.length} 首。`);
+  batchBusy=false;$('#bGo').disabled=false;$('#bFiles').value='';$('#bLinks').value='';
+};
+
 // ---------- backup ----------
 const backupText=()=>JSON.stringify({app:'utaloop',version:1,songs:S.songs},null,2);
 function importText(t){
@@ -670,6 +892,7 @@ function importText(t){
   for(const r of list){
     if(!r||typeof r!=='object')continue;
     const song={id:String(r.id||uid()),title:String(r.title||'未命名'),artist:String(r.artist||''),yt:String(r.yt||''),lyrics:String(r.lyrics||'')};
+    if(+r.dur)song.dur=+r.dur;
     if(r.audio&&typeof r.audio==='object')song.audio={name:String(r.audio.name||'音檔'),size:+r.audio.size||0};
     const at=S.songs.findIndex(s=>s.id===song.id);
     if(at>=0){S.songs[at]=song;updated++}else{S.songs.push(song);added++}
