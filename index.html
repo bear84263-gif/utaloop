@@ -1,0 +1,764 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>うたループ</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Zen+Maru+Gothic:wght@500;700&family=Noto+Sans+TC:wght@400;500;700&display=swap">
+<style>
+/* Layout: tablet landscape = player + playlist column on the left, big scrolling lyrics on the right; portrait/phone = player on top, lyrics fill the rest, playlist swaps in. */
+:root{
+  --bg:#eef1f6; --panel:#ffffff; --ink:#18203a; --muted:#5b6583; --line:#d6dbe8;
+  --accent:#2d5aa8; --accent-ink:#ffffff; --hi:#b35a00; --hi-bg:#fff1dc; --dim:#7f88a4; --danger:#b3261e;
+  --f-jp:"Zen Maru Gothic","Hiragino Maru Gothic ProN","Noto Sans JP",system-ui,sans-serif;
+  --f-ui:"Noto Sans TC","PingFang TC","Microsoft JhengHei",system-ui,sans-serif;
+  --scale:1;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --bg:#0f1528; --panel:#182039; --ink:#e8ebf5; --muted:#9aa3c1; --line:#2a3455;
+  --accent:#7ea6ff; --accent-ink:#0f1528; --hi:#ffc163; --hi-bg:rgba(255,193,99,.10); --dim:#6e7899; --danger:#ff8a80; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#0f1528; --panel:#182039; --ink:#e8ebf5; --muted:#9aa3c1; --line:#2a3455;
+  --accent:#7ea6ff; --accent-ink:#0f1528; --hi:#ffc163; --hi-bg:rgba(255,193,99,.10); --dim:#6e7899; --danger:#ff8a80; color-scheme:dark}
+
+*{box-sizing:border-box}
+html,body{height:100%}
+body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--f-ui);font-size:15px;-webkit-tap-highlight-color:transparent;overflow:hidden}
+button,select,input,textarea{font:inherit;color:inherit}
+button{cursor:pointer}
+:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
+[hidden]{display:none!important}
+
+.app{height:100%;display:flex;flex-direction:column;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
+.top{display:flex;align-items:center;gap:12px;padding-block:10px;flex-wrap:wrap}
+.brand{display:flex;align-items:center;gap:10px;font-family:var(--f-jp);font-weight:700;font-size:20px;letter-spacing:.04em}
+.logo{display:grid;place-items:center;width:34px;height:34px;border-radius:50%;background:var(--accent);color:var(--accent-ink);font-size:17px}
+.top-actions{margin-left:auto;display:flex;gap:8px;flex-wrap:wrap}
+
+.ghost,.chip,.primary,.danger{border:1px solid var(--line);background:var(--panel);border-radius:999px;padding:8px 14px;min-height:40px;white-space:nowrap}
+.primary{background:var(--accent);border-color:var(--accent);color:var(--accent-ink);font-weight:700}
+.danger{color:var(--danger);border-color:currentColor;background:transparent}
+.chip[aria-pressed="true"]{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
+button:disabled{opacity:.35;cursor:default}
+
+.body{flex:1;min-height:0;display:flex;flex-direction:column;gap:10px;padding-bottom:10px}
+.side{display:flex;flex-direction:column;gap:10px;min-height:0}
+.player{position:relative;width:100%;aspect-ratio:16/9;max-height:34vh;border-radius:14px;overflow:hidden;background:#000}
+.player .video,#yt{position:absolute;inset:0;width:100%;height:100%}
+.novideo,.ytblocked{position:absolute;inset:0;display:grid;place-items:center;text-align:center;padding:12px;background:var(--panel);color:var(--muted);line-height:1.6}
+.player[data-kind="clock"],.player[data-kind="audio"]{aspect-ratio:auto;height:76px;background:var(--panel);border:1px solid var(--line)}
+.player[data-kind="clock"] .video,.player[data-kind="audio"] .video,.player[data-kind="yt"] .novideo{display:none}
+.player[data-kind="audio"] .novideo{color:var(--ink);font-family:var(--f-jp)}
+body.small-video .player:not([data-kind="clock"]){max-height:120px}
+.ytblocked{font-size:14px}
+
+.now{min-width:0}
+.now-title{font-family:var(--f-jp);font-weight:700;font-size:18px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.now-artist{color:var(--muted);font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.seekrow{display:flex;align-items:center;gap:10px;font-variant-numeric:tabular-nums;color:var(--muted);font-size:13px}
+.seekrow input{flex:1;min-width:0;accent-color:var(--accent)}
+.transport{display:flex;align-items:center;justify-content:center;gap:18px}
+.transport button{width:52px;height:52px;border-radius:50%;border:1px solid var(--line);background:var(--panel);font-size:20px;display:grid;place-items:center}
+.transport .play{width:68px;height:68px;background:var(--accent);border-color:var(--accent);color:var(--accent-ink);font-size:26px}
+.loopopts{display:flex;gap:8px;flex-wrap:wrap;justify-content:center}
+.loopopts label{display:inline-flex;align-items:center;gap:6px}
+.loopopts select{border:none;background:transparent;font-weight:700;padding:0 2px}
+
+.playlist{display:none;flex-direction:column;min-height:0;background:var(--panel);border:1px solid var(--line);border-radius:14px}
+.playlist h2{margin:0;padding:12px 14px 6px;font-size:13px;letter-spacing:.08em;color:var(--muted);font-weight:500}
+#plist{list-style:none;margin:0;padding:4px 6px 8px;overflow:auto;min-height:0;flex:1}
+.song{display:flex;align-items:center;gap:4px;border-radius:10px}
+.song.cur{background:var(--hi-bg)}
+.song-main{flex:1;min-width:0;display:flex;align-items:center;gap:10px;border:none;background:none;text-align:left;padding:10px 8px}
+.num{width:24px;flex:none;text-align:center;color:var(--muted);font-variant-numeric:tabular-nums}
+.song.cur .num{color:var(--hi);font-weight:700}
+.meta{display:flex;flex-direction:column;min-width:0}
+.st{font-family:var(--f-jp);font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.sa{font-size:12px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.song-tools{display:flex;gap:2px;flex:none}
+.song-tools button{border:none;background:none;min-width:36px;height:36px;border-radius:8px;color:var(--muted);font-size:14px}
+.song-tools button:hover{background:var(--bg)}
+
+.stage{flex:1;min-height:0;display:flex;flex-direction:column;background:var(--panel);border:1px solid var(--line);border-radius:18px;overflow:hidden;position:relative}
+.lyr-tools{display:flex;gap:6px;flex-wrap:wrap;align-items:center;padding:10px;border-bottom:1px solid var(--line)}
+.lyr-tools .chip{min-height:36px;padding:6px 12px;font-size:14px}
+.grow{flex:1}
+.lyrics{flex:1;min-height:0;overflow-y:auto;position:relative;padding-block:28vh;padding-inline:clamp(12px,3vw,40px);font-size:calc(clamp(22px,1.8vw + 12px,40px) * var(--scale));overscroll-behavior:contain}
+.line{padding:.25em .5em;border-radius:14px;color:var(--dim);cursor:pointer;transition:color .25s,background-color .25s}
+.line+.line{margin-top:.35em}
+.line .jp{font-family:var(--f-jp);font-weight:500;line-height:1.9}
+.line .tr{font-size:.55em;line-height:1.5;color:inherit;opacity:.9;padding-bottom:.2em}
+.line.on{background:var(--hi-bg);color:var(--ink)}
+.line.on .jp{color:var(--hi);font-weight:700}
+.line.untimed{color:var(--muted)}
+ruby{ruby-position:over}
+rt{font-size:.46em;letter-spacing:0;font-weight:500}
+.noruby rt{display:none}
+.notrans .tr{display:none}
+.empty{color:var(--muted);text-align:center;font-size:18px;line-height:1.8;font-family:var(--f-ui)}
+body.timing .line.target{outline:3px dashed var(--accent);outline-offset:2px;color:var(--ink)}
+
+.timing-bar{border-top:1px solid var(--line);padding:12px;display:flex;flex-direction:column;gap:10px;background:var(--panel)}
+.tb-head{display:flex;gap:10px;align-items:baseline;flex-wrap:wrap}
+.tk-line{font-family:var(--f-jp);font-size:18px;color:var(--ink);min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1}
+.tb-btns{display:flex;gap:10px;align-items:stretch}
+.stamp{flex:1;min-height:64px;border-radius:16px;border:none;background:var(--hi);color:var(--bg);font-size:20px;font-weight:700;touch-action:manipulation}
+.tb-hint{margin:0;color:var(--muted);font-size:13px}
+
+dialog{border:1px solid var(--line);border-radius:18px;background:var(--panel);color:var(--ink);padding:0;width:min(640px,calc(100vw - 24px));max-height:calc(100dvh - 24px)}
+dialog::backdrop{background:rgba(8,12,24,.55)}
+.dlg{padding:20px;display:flex;flex-direction:column;gap:12px;overflow:auto;max-height:calc(100dvh - 26px)}
+.dlg h2{margin:0;font-size:20px}
+.dlg h3{margin:8px 0 0;font-size:15px}
+.dlg p{margin:0;line-height:1.6;color:var(--muted)}
+.dlg label{display:flex;flex-direction:column;gap:6px;font-weight:500}
+.dlg input:not([type=file]),.dlg textarea{width:100%;border:1px solid var(--line);border-radius:10px;padding:10px 12px;background:var(--bg)}
+.dlg textarea{font-family:var(--f-jp);line-height:1.6;resize:vertical}
+.row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.row.end{justify-content:flex-end}
+.field-err{color:var(--danger)!important;font-size:14px}
+.help{border:1px solid var(--line);border-radius:10px;padding:10px 12px;font-size:14px;line-height:1.7}
+.help summary{cursor:pointer;font-weight:500}
+.help code{font-family:var(--f-jp);background:var(--bg);padding:1px 6px;border-radius:6px}
+.help ul{margin:8px 0 0;padding-left:20px}
+.audio-field{display:flex;flex-direction:column;gap:6px}
+.audio-field .lbl{font-weight:500}
+.audio-field .hint{font-size:13px;color:var(--muted)}
+#fAudioName{color:var(--muted);font-size:14px;overflow-wrap:anywhere}
+
+#toast{position:fixed;left:50%;bottom:calc(20px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);background:var(--ink);color:var(--bg);padding:10px 16px;border-radius:12px;max-width:calc(100vw - 32px);z-index:50;font-size:14px;box-shadow:0 6px 24px rgba(0,0,0,.25)}
+
+.only-narrow{display:inline-flex}
+@media (max-width:899px){
+  .playlist{flex:1}
+  body.show-list .playlist{display:flex}
+  body.show-list .stage{display:none}
+}
+@media (min-width:900px){
+  .only-narrow{display:none}
+  .body{flex-direction:row;gap:16px}
+  .side{width:clamp(320px,32vw,420px);flex:none;overflow:hidden}
+  .player{max-height:none}
+  .playlist{display:flex;flex:1}
+}
+@media (prefers-reduced-motion:reduce){.line{transition:none}}
+</style>
+</head>
+<body>
+<div class="app">
+  <header class="top">
+    <div class="brand"><span class="logo" aria-hidden="true">歌</span><span>うたループ</span></div>
+    <div class="top-actions">
+      <button id="btnList" class="ghost only-narrow" type="button">歌單</button>
+      <button id="btnAdd" class="ghost" type="button">＋ 新增歌曲</button>
+      <button id="btnSettings" class="ghost" type="button">備份</button>
+    </div>
+  </header>
+
+  <div class="body">
+    <aside class="side">
+      <div id="player" class="player" data-kind="clock">
+        <div class="video"><div id="yt"></div></div>
+        <div class="novideo"><div id="novideoText">這首沒有設定音源，按播放會用計時器跑歌詞</div></div>
+        <audio id="audio" preload="auto" playsinline></audio>
+        <div class="ytblocked" id="ytBlocked" hidden><div>YouTube 在這裡載入不了。<br>請把網頁放到網站空間（例如 GitHub Pages）再打開。</div></div>
+      </div>
+      <div class="now"><div class="now-title" id="nowTitle"></div><div class="now-artist" id="nowArtist"></div></div>
+      <div class="seekrow"><span id="tcur">0:00</span><input id="seek" type="range" min="0" max="1" step="0.1" value="0" aria-label="播放進度"><span id="tdur">--:--</span></div>
+      <div class="transport">
+        <button id="btnPrev" type="button" aria-label="上一首">⏮</button>
+        <button id="btnPlay" class="play" type="button" aria-label="播放">▶</button>
+        <button id="btnNext" type="button" aria-label="下一首">⏭</button>
+      </div>
+      <div class="loopopts">
+        <button id="btnMode" class="chip" type="button"></button>
+        <label class="chip" for="selRepeat">每首播
+          <select id="selRepeat"><option value="1">1</option><option value="2">2</option><option value="3">3</option><option value="5">5</option></select> 次</label>
+      </div>
+      <section class="playlist" aria-label="歌單">
+        <h2>歌單 · <span id="plCount">0</span> 首</h2>
+        <ol id="plist"></ol>
+      </section>
+    </aside>
+
+    <main class="stage">
+      <div class="lyr-tools">
+        <button id="tgRuby" class="chip" type="button" aria-pressed="true">假名</button>
+        <button id="tgTrans" class="chip" type="button" aria-pressed="true">翻譯</button>
+        <button id="fontDown" class="chip" type="button" aria-label="字變小">A−</button>
+        <button id="fontUp" class="chip" type="button" aria-label="字變大">A+</button>
+        <span class="grow"></span>
+        <button id="tgVideo" class="chip" type="button" aria-pressed="false">縮小影片</button>
+        <button id="btnTiming" class="chip" type="button">對時</button>
+        <button id="btnEditCur" class="chip" type="button">編輯</button>
+        <button id="btnFull" class="chip" type="button" hidden>全螢幕</button>
+      </div>
+      <div id="lyrics" class="lyrics"></div>
+      <div id="timingBar" class="timing-bar" hidden>
+        <div class="tb-head"><strong>對時中</strong><span id="tkInfo"></span><span id="tkLine" class="tk-line"></span></div>
+        <div class="tb-btns">
+          <button id="tkBack" class="ghost" type="button">↶ 退回</button>
+          <button id="tkStamp" class="stamp" type="button">這句開始唱了！</button>
+          <button id="tkDone" class="ghost" type="button">完成</button>
+        </div>
+        <p class="tb-hint">歌會從頭播放。每當虛線框住的那句開始唱，就按一下大按鈕。按錯了就按「退回」。也可以直接點某一句，從那句開始重標。</p>
+      </div>
+    </main>
+  </div>
+</div>
+
+<dialog id="editor">
+  <form id="edForm" class="dlg">
+    <h2 id="edHead">新增歌曲</h2>
+    <label>歌名<input id="fTitle" required autocomplete="off"></label>
+    <label>歌手<input id="fArtist" autocomplete="off"></label>
+    <label>YouTube 連結<input id="fYt" inputmode="url" autocomplete="off" placeholder="https://www.youtube.com/watch?v=…"></label>
+    <div class="audio-field">
+      <span class="lbl">音檔（選了音檔就不會用 YouTube）</span>
+      <div class="row"><input type="file" id="fAudio" accept="audio/*,.mp3,.m4a,.aac,.wav,.ogg,.flac"><button type="button" id="fAudioClear" class="ghost" hidden>移除音檔</button></div>
+      <span id="fAudioName"></span>
+      <span class="hint">音檔只存在這台裝置裡。YouTube 連結和音檔填一個就好。</span>
+    </div>
+    <p class="field-err" id="ytErr" hidden>看不懂這個連結。請貼 YouTube 影片頁面的網址，例如 https://youtu.be/xxxxxxxxxxx</p>
+    <label>歌詞<textarea id="fLyrics" rows="12" spellcheck="false" placeholder="[00:12.50] 夜{よる}の街{まち}を歩{ある}く&#10;> 走在夜晚的街道"></textarea></label>
+    <div class="row"><label for="fLrc" style="flex-direction:row;align-items:center;font-weight:400;color:var(--muted)">從 LRC 檔載入：</label><input type="file" id="fLrc" accept=".lrc,.txt,text/plain"></div>
+    <details class="help">
+      <summary>歌詞怎麼寫？</summary>
+      <ul>
+        <li>每行一句。前面可以加時間：<code>[01:23.45] 歌詞</code>（分:秒）。</li>
+        <li>漢字後面用大括號標假名：<code>夜{よる}の街{まち}</code>。</li>
+        <li>要把假名標在一整段上（例如含平假名的詞），前面加直線：<code>｜明日{あした}</code>。</li>
+        <li>中文翻譯寫在下一行，用 <code>&gt;</code> 開頭：<code>&gt; 走在夜晚的街道</code>。</li>
+        <li>不知道時間沒關係，先不寫，存好後按「對時」邊聽邊按就好。</li>
+        <li>網路上下載的 LRC 歌詞檔可以直接貼進來。</li>
+        <li>選音檔時如果歌名還空著，會自動用檔名當歌名。</li>
+      </ul>
+    </details>
+    <div class="row">
+      <button type="button" id="fDelete" class="danger">刪除這首</button>
+      <span class="grow"></span>
+      <button type="button" id="fCancel" class="ghost">取消</button>
+      <button type="submit" class="primary">儲存</button>
+    </div>
+  </form>
+</dialog>
+
+<dialog id="settings">
+  <div class="dlg">
+    <h2>備份與匯入</h2>
+    <p>歌單存在這台裝置的瀏覽器裡。清除瀏覽器資料就會不見，換裝置也不會跟過去，記得偶爾備份。</p>
+    <div class="row"><button id="btnExport" class="primary" type="button">下載備份檔</button><button id="btnCopy" class="ghost" type="button">複製備份文字</button></div>
+    <h3>匯入</h3>
+    <p>匯入的歌會加到現有歌單後面，同一首會被更新。備份不包含音檔，換裝置後要在「編輯」裡重新選音檔。</p>
+    <input type="file" id="fileImport" accept=".json,application/json,.txt">
+    <textarea id="pasteImport" rows="4" placeholder="或把備份文字貼在這裡"></textarea>
+    <div class="row"><button id="btnPasteImport" class="ghost" type="button">匯入貼上的文字</button><span class="grow"></span><button id="setClose" class="ghost" type="button">關閉</button></div>
+  </div>
+</dialog>
+
+<div id="toast" role="status" hidden></div>
+
+<script>
+(function(){
+'use strict';
+const $=s=>document.querySelector(s);
+const KEY='utaloop-v1';
+const esc=s=>String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const uid=()=>Math.random().toString(36).slice(2,10);
+const now=()=>performance.now()/1000;
+
+// ---------- data ----------
+const SAMPLE={id:'sample',title:'さくら さくら（範例）',artist:'日本傳統民謠 · 時間是示範用的',yt:'',lyrics:
+`[00:01.00] さくら さくら
+> 櫻花啊 櫻花
+[00:07.00] 弥生{やよい}の空{そら}は
+> 三月的天空
+[00:12.00] 見{み}わたす限{かぎ}り
+> 放眼望去
+[00:17.00] 霞{かすみ}か雲{くも}か
+> 是霞還是雲
+[00:22.00] 匂{にお}いぞ出{い}ずる
+> 飄散著芬芳
+[00:27.00] いざや いざや
+> 來吧 來吧
+[00:32.00] 見{み}にゆかん
+> 一起去賞花吧`};
+
+let saved=null;
+try{saved=JSON.parse(localStorage.getItem(KEY)||'null')}catch(e){}
+const S=Object.assign({songs:[SAMPLE],cur:0,mode:'all',repeat:1,ruby:true,trans:true,size:1,smallVideo:false},saved||{});
+if(!Array.isArray(S.songs))S.songs=[SAMPLE];
+if(!(S.cur>=0&&S.cur<S.songs.length))S.cur=0;
+function save(){try{localStorage.setItem(KEY,JSON.stringify(S))}catch(e){}}
+
+// ---------- audio files (IndexedDB) ----------
+const DB={p:null,
+  open(){return this.p||(this.p=new Promise((res,rej)=>{let r;try{r=indexedDB.open('utaloop-audio',1)}catch(e){rej(e);return}
+    r.onupgradeneeded=()=>r.result.createObjectStore('files');r.onsuccess=()=>res(r.result);r.onerror=()=>rej(r.error)}))},
+  async run(mode,fn){const db=await this.open();return new Promise((res,rej)=>{const tx=db.transaction('files',mode);const req=fn(tx.objectStore('files'));tx.oncomplete=()=>res(req&&req.result);tx.onerror=()=>rej(tx.error);tx.onabort=()=>rej(tx.error)})},
+  put(k,v){return this.run('readwrite',st=>st.put(v,k))},
+  get(k){return this.run('readonly',st=>st.get(k))},
+  del(k){return this.run('readwrite',st=>st.delete(k)).catch(()=>{})}
+};
+
+// ---------- lyrics ----------
+function ytId(u){
+  if(!u)return '';u=String(u).trim();
+  if(/^[\w-]{11}$/.test(u))return u;
+  const m=u.match(/(?:[?&]v=|youtu\.be\/|\/shorts\/|\/embed\/|\/live\/)([\w-]{11})/);
+  return m?m[1]:'';
+}
+const RUBY=/(?:[|｜]([^|｜{《\n]+?)|([㐀-䶿一-鿿豈-﫿々〆ヵヶ]+))(?:\{([^}\n]*)\}|《([^》\n]*)》)/g;
+function ruby(s){
+  return esc(s).replace(RUBY,(m,a,b,c,d)=>`<ruby>${a||b}<rt>${c!==undefined?c:d}</rt></ruby>`);
+}
+function parseLyrics(text){
+  const out=[];let group=[],multi=false;
+  for(const raw of String(text||'').split(/\r?\n/)){
+    const line=raw.trim();if(!line)continue;
+    if(/^[>＞]/.test(line)){
+      const tr=line.replace(/^[>＞]\s*/,'');
+      for(const l of group)l.tr=l.tr?l.tr+' / '+tr:tr;
+      continue;
+    }
+    if(/^\[[a-z]+:.*\]$/i.test(line))continue; // LRC tags like [ti:..]
+    const m=line.match(/^((?:\[\d{1,3}:\d{1,2}(?:[.:]\d{1,3})?\]\s*)+)(.*)$/);
+    if(m){
+      const times=[...m[1].matchAll(/\[(\d{1,3}):(\d{1,2}(?:[.:]\d{1,3})?)\]/g)].map(x=>+x[1]*60+parseFloat(x[2].replace(':','.')));
+      if(times.length>1)multi=true;
+      group=times.map(t=>({t,jp:m[2].trim(),tr:''}));
+    }else group=[{t:null,jp:line,tr:''}];
+    out.push(...group);
+  }
+  if(multi)out.sort((a,b)=>(a.t??1e9)-(b.t??1e9));
+  return out;
+}
+function fmtStamp(t){const m=Math.floor(t/60),s=t-m*60;return String(m).padStart(2,'0')+':'+s.toFixed(2).padStart(5,'0')}
+function fmtShort(t){t=Math.max(0,Math.floor(t||0));return Math.floor(t/60)+':'+String(t%60).padStart(2,'0')}
+function serialize(ls){return ls.map(l=>(l.t!=null?`[${fmtStamp(l.t)}] `:'')+l.jp+(l.tr?'\n> '+l.tr:'')).join('\n')}
+
+// ---------- UI refs ----------
+const lyricsBox=$('#lyrics'),playerEl=$('#player'),seekEl=$('#seek'),toastEl=$('#toast');
+let lines=[],lineEls=[],active=-1,userScrollUntil=0,seeking=false;
+
+function toast(msg,ms){
+  toastEl.textContent=msg;toastEl.hidden=false;
+  clearTimeout(toast._t);toast._t=setTimeout(()=>toastEl.hidden=true,ms||2800);
+}
+
+function applyView(){
+  lyricsBox.classList.toggle('noruby',!S.ruby);
+  lyricsBox.classList.toggle('notrans',!S.trans);
+  $('#tgRuby').setAttribute('aria-pressed',S.ruby);
+  $('#tgTrans').setAttribute('aria-pressed',S.trans);
+  $('#tgVideo').setAttribute('aria-pressed',S.smallVideo);
+  document.body.classList.toggle('small-video',S.smallVideo);
+  document.documentElement.style.setProperty('--scale',S.size);
+  $('#btnMode').textContent={all:'🔁 清單循環',one:'🔂 單曲循環',shuffle:'🔀 隨機播放'}[S.mode];
+  $('#selRepeat').value=String(S.repeat);
+  $('#selRepeat').disabled=S.mode==='one';
+}
+
+function renderNow(){
+  const s=S.songs[S.cur];
+  $('#nowTitle').textContent=s?(s.title||'未命名'):'歌單是空的';
+  $('#nowArtist').textContent=s?(s.artist||''):'按「＋ 新增歌曲」加第一首歌';
+}
+
+function renderLyrics(){
+  const s=S.songs[S.cur];
+  lines=s?parseLyrics(s.lyrics):[];
+  lyricsBox.innerHTML='';lineEls=[];active=-1;
+  if(!s){lyricsBox.innerHTML='<p class="empty">還沒有歌。<br>按右上角「＋ 新增歌曲」開始。</p>';return}
+  if(!lines.length){lyricsBox.innerHTML='<p class="empty">這首還沒有歌詞。<br>按「編輯」把歌詞貼進來。</p>';return}
+  const frag=document.createDocumentFragment();
+  lineEls=lines.map((l,i)=>{
+    const d=document.createElement('div');
+    d.className='line'+(l.t==null?' untimed':'');d.dataset.i=i;
+    d.innerHTML=`<div class="jp">${l.jp?ruby(l.jp):'♪'}</div>`+(l.tr?`<div class="tr">${esc(l.tr)}</div>`:'');
+    frag.appendChild(d);return d;
+  });
+  lyricsBox.appendChild(frag);
+  lyricsBox.scrollTop=0;
+  updateTimingTarget();
+}
+
+function renderPlaylist(){
+  const ul=$('#plist');ul.innerHTML='';
+  $('#plCount').textContent=S.songs.length;
+  $('#btnList').textContent=document.body.classList.contains('show-list')?'看歌詞':`歌單 (${S.songs.length})`;
+  S.songs.forEach((s,i)=>{
+    const li=document.createElement('li');li.className='song'+(i===S.cur?' cur':'');
+    const sub=[s.artist,s.audio?'🎵 音檔':ytId(s.yt)?'':'沒有音源'].filter(Boolean).join(' · ');
+    li.innerHTML=`<button type="button" class="song-main" data-act="play" data-i="${i}"><span class="num">${i===S.cur?'♪':i+1}</span><span class="meta"><span class="st">${esc(s.title||'未命名')}</span><span class="sa">${esc(sub)}</span></span></button>`+
+      `<span class="song-tools"><button type="button" data-act="up" data-i="${i}" aria-label="往上移"${i===0?' disabled':''}>↑</button><button type="button" data-act="down" data-i="${i}" aria-label="往下移"${i===S.songs.length-1?' disabled':''}>↓</button><button type="button" data-act="edit" data-i="${i}">編輯</button></span>`;
+    ul.appendChild(li);
+  });
+}
+
+function setActive(idx){
+  if(lineEls[active])lineEls[active].classList.remove('on');
+  active=idx;
+  const el=lineEls[idx];if(!el)return;
+  el.classList.add('on');
+  if(now()>userScrollUntil&&!timing)scrollToLine(el);
+}
+function scrollToLine(el){
+  const top=el.offsetTop-lyricsBox.clientHeight*0.4+el.offsetHeight/2;
+  const reduce=matchMedia('(prefers-reduced-motion: reduce)').matches;
+  lyricsBox.scrollTo({top:Math.max(0,top),behavior:reduce?'auto':'smooth'});
+}
+['touchstart','wheel','pointerdown'].forEach(ev=>lyricsBox.addEventListener(ev,()=>{userScrollUntil=now()+4},{passive:true}));
+
+// ---------- player engine (YouTube or a plain timer when there is no video) ----------
+let yt=null,ytReady=false,ytFailed=false,pending=null,ytPlaying=false;
+let kind='none',clockPlaying=false,clockBase=0,clockAt=0;
+const audioEl=$('#audio');let audioUrl=null,loadToken=0;
+let playCount=0,errStreak=0;
+
+function curTime(){
+  if(kind==='yt')return ytReady&&yt.getCurrentTime?(yt.getCurrentTime()||0):0;
+  if(kind==='audio')return audioEl.currentTime||0;
+  if(kind==='clock')return clockPlaying?clockBase+now()-clockAt:clockBase;
+  return 0;
+}
+function duration(){
+  if(kind==='yt')return ytReady&&yt.getDuration?(yt.getDuration()||0):0;
+  if(kind==='audio')return isFinite(audioEl.duration)?audioEl.duration:0;
+  if(kind==='clock'){const ts=lines.filter(l=>l.t!=null).map(l=>l.t);return (ts.length?Math.max(...ts):0)+6}
+  return 0;
+}
+function isPlaying(){return kind==='yt'?ytPlaying:kind==='audio'?!audioEl.paused:kind==='clock'?clockPlaying:false}
+function play(){
+  if(kind==='yt'){if(ytReady)yt.playVideo();else if(pending)pending.autoplay=true}
+  else if(kind==='audio'){if(audioEl.src){const p=audioEl.play();if(p&&p.catch)p.catch(()=>{updatePlayBtn()})}else audioWant=true}
+  else if(kind==='clock'&&!clockPlaying){if(clockBase>=duration())clockBase=0;clockAt=now();clockPlaying=true}
+  keepAwake();updatePlayBtn();
+}
+function pause(){
+  if(kind==='yt'){if(ytReady)yt.pauseVideo()}
+  else if(kind==='audio'){audioWant=false;audioEl.pause()}
+  else if(kind==='clock'&&clockPlaying){clockBase=curTime();clockPlaying=false}
+  updatePlayBtn();
+}
+function seek(t){
+  t=Math.max(0,t);
+  if(kind==='yt'){if(ytReady)yt.seekTo(t,true)}
+  else if(kind==='audio'){try{audioEl.currentTime=t}catch(e){}}
+  else if(kind==='clock'){clockBase=t;clockAt=now()}
+}
+function updatePlayBtn(){
+  const p=isPlaying();const b=$('#btnPlay');
+  b.textContent=p?'⏸':'▶';b.setAttribute('aria-label',p?'暫停':'播放');
+}
+function updateBlocked(){$('#ytBlocked').hidden=!(ytFailed&&kind==='yt')}
+
+let audioWant=false;
+function skipAfterError(msg){
+  errStreak++;
+  const c=S.cur;
+  if(S.songs.length>1&&errStreak<S.songs.length){toast(msg+'，3 秒後跳下一首',3200);setTimeout(()=>{if(S.cur===c)next()},3000)}
+  else toast(msg,5000);
+}
+function loadSong(i,autoplay){
+  if(timing)stopTiming(true);
+  const n=S.songs.length;
+  loadToken++;
+  if(!n){kind='none';if(ytReady)yt.stopVideo();audioEl.pause();renderNow();renderLyrics();renderPlaylist();updatePlayBtn();return}
+  S.cur=((i%n)+n)%n;save();playCount=0;
+  const s=S.songs[S.cur],id=ytId(s.yt);
+  renderNow();renderLyrics();renderPlaylist();updateMediaSession();
+  if(kind==='yt'&&ytReady&&(s.audio||!id))yt.stopVideo();
+  if(kind==='audio'&&!s.audio)audioEl.pause();
+  clockPlaying=false;ytPlaying=false;
+  if(s.audio){
+    kind='audio';playerEl.dataset.kind='audio';
+    $('#novideoText').textContent='🎵 '+(s.audio.name||'音檔');
+    audioEl.pause();audioEl.removeAttribute('src');audioWant=!!autoplay;
+    const token=loadToken;
+    DB.get(s.id).then(blob=>{
+      if(token!==loadToken)return;
+      if(!blob){$('#novideoText').textContent='找不到音檔，請按「編輯」重新選擇';if(autoplay)skipAfterError('這首的音檔不在這台裝置上');return}
+      if(audioUrl)URL.revokeObjectURL(audioUrl);
+      audioUrl=URL.createObjectURL(blob);audioEl.src=audioUrl;
+      if(audioWant){const p=audioEl.play();if(p&&p.catch)p.catch(()=>{toast('按一下播放鍵開始');updatePlayBtn()})}
+    }).catch(()=>{if(token===loadToken)toast('讀不到音檔（瀏覽器可能封鎖了儲存空間）',5000)});
+  }else if(id){
+    kind='yt';playerEl.dataset.kind='yt';
+    if(ytReady){autoplay?yt.loadVideoById(id):yt.cueVideoById(id)}else pending={id,autoplay};
+  }else{
+    kind='clock';playerEl.dataset.kind='clock';
+    $('#novideoText').textContent='這首沒有設定音源，按播放會用計時器跑歌詞';
+    clockBase=0;clockAt=now();clockPlaying=!!autoplay;
+  }
+  updateBlocked();updatePlayBtn();
+  if(autoplay)keepAwake();
+}
+audioEl.addEventListener('play',()=>{if(kind==='audio'){errStreak=0;keepAwake();updatePlayBtn()}});
+audioEl.addEventListener('pause',()=>{if(kind==='audio')updatePlayBtn()});
+audioEl.addEventListener('ended',()=>{if(kind==='audio')onEnded()});
+audioEl.addEventListener('error',()=>{if(kind==='audio'&&audioEl.getAttribute('src'))skipAfterError('這個音檔格式不能播放')});
+function updateMediaSession(){
+  if(!('mediaSession' in navigator))return;
+  const s=S.songs[S.cur];
+  try{navigator.mediaSession.metadata=new MediaMetadata({title:s?s.title:'',artist:s?s.artist:'',album:'うたループ'})}catch(e){}
+}
+if('mediaSession' in navigator){
+  [['play',()=>play()],['pause',()=>pause()],['nexttrack',()=>next()],['previoustrack',()=>prev()]].forEach(([a,f])=>{try{navigator.mediaSession.setActionHandler(a,f)}catch(e){}});
+}
+function onEnded(){
+  if(timing){updatePlayBtn();return}
+  if(S.mode==='one'){seek(0);play();return}
+  playCount++;
+  if(playCount<S.repeat){seek(0);play();return}
+  next();
+}
+function next(){
+  const n=S.songs.length;if(!n)return;
+  let j=(S.cur+1)%n;
+  if(S.mode==='shuffle'&&n>1){do{j=Math.floor(Math.random()*n)}while(j===S.cur)}
+  loadSong(j,true);
+}
+function prev(){if(curTime()>3){seek(0);return}loadSong(S.cur-1,true)}
+
+window.onYouTubeIframeAPIReady=function(){
+  yt=new YT.Player('yt',{width:'100%',height:'100%',playerVars:{playsinline:1,rel:0,modestbranding:1},
+    events:{
+      onReady(){ytReady=true;ytFailed=false;updateBlocked();if(pending){const p=pending;pending=null;p.autoplay?yt.loadVideoById(p.id):yt.cueVideoById(p.id)}},
+      onStateChange(e){
+        if(kind!=='yt')return;
+        ytPlaying=e.data===1;
+        if(e.data===1){errStreak=0;keepAwake()}
+        if(e.data===0)onEnded();
+        updatePlayBtn();
+      },
+      onError(e){
+        if(kind!=='yt')return;
+        const msg={2:'影片連結不正確',5:'這部影片無法在網頁裡播放',100:'找不到這部影片（可能被刪除或設成私人）',101:'這部影片的上傳者不允許在別的網站播放',150:'這部影片的上傳者不允許在別的網站播放',153:'YouTube 拒絕播放：請把網頁放到網站上再開，不要直接開檔案'}[e.data]||'影片播放失敗';
+        if(e.data===153)toast(msg,5000);else skipAfterError(msg);
+      }
+    }});
+};
+(function loadYT(){
+  const s=document.createElement('script');
+  s.src='https://www.youtube.com/iframe_api';
+  s.onerror=()=>{ytFailed=true;updateBlocked()};
+  document.head.appendChild(s);
+  setTimeout(()=>{if(!ytReady){ytFailed=true;updateBlocked()}},10000);
+})();
+
+// ---------- tick ----------
+setInterval(()=>{
+  const t=curTime(),d=duration();
+  if(kind==='clock'&&clockPlaying&&t>=d){clockBase=d;clockPlaying=false;updatePlayBtn();onEnded();return}
+  $('#tcur').textContent=fmtShort(t);
+  $('#tdur').textContent=d?fmtShort(d):'--:--';
+  if(!seeking){seekEl.max=d||1;seekEl.value=Math.min(t,d||1)}
+  let idx=-1,best=-1;
+  for(let i=0;i<lines.length;i++){const lt=lines[i].t;if(lt!=null&&lt<=t+0.15&&lt>=best){best=lt;idx=i}}
+  if(idx!==active)setActive(idx);
+},150);
+
+// ---------- timing (tap to stamp) ----------
+let timing=false,tk=0;
+function startTiming(){
+  if(!S.songs.length)return;
+  if(!lines.length){toast('先按「編輯」把歌詞貼進來');return}
+  timing=true;tk=0;
+  document.body.classList.add('timing');document.body.classList.remove('show-list');
+  $('#timingBar').hidden=false;
+  seek(0);play();updateTimingTarget();
+}
+function stopTiming(silent){
+  timing=false;document.body.classList.remove('timing');$('#timingBar').hidden=true;
+  if(!silent){renderLyrics();toast('時間已儲存')}
+}
+function updateTimingTarget(){
+  lineEls.forEach((el,i)=>el.classList.toggle('target',timing&&i===tk));
+  if(!timing)return;
+  $('#tkInfo').textContent=`第 ${Math.min(tk+1,lines.length)} / ${lines.length} 句`;
+  const l=lines[tk];$('#tkLine').textContent=l?(l.jp||'♪').replace(RUBY,(m,a,b)=>a||b):'';
+  if(lineEls[tk])scrollToLine(lineEls[tk]);
+}
+function persistLines(){S.songs[S.cur].lyrics=serialize(lines);save()}
+function stamp(){
+  if(!timing||tk>=lines.length)return;
+  lines[tk].t=Math.max(0,curTime()-0.15);
+  if(lineEls[tk])lineEls[tk].classList.remove('untimed');
+  tk++;persistLines();
+  if(tk>=lines.length){toast('全部標好了！');stopTiming(true);renderLyrics()}
+  else updateTimingTarget();
+}
+function stampBack(){
+  if(!timing)return;
+  tk=Math.max(0,tk-1);
+  const t0=tk>0?lines[tk-1].t:0;
+  seek(Math.max(0,(t0||0)-0.5));play();updateTimingTarget();
+}
+
+// ---------- editor ----------
+let editIdx=-1,delArm=false,edAudio={act:'keep',file:null};
+function showAudioName(a){$('#fAudioName').textContent=a?'目前音檔：'+a.name+(a.size?'（'+(a.size/1048576).toFixed(1)+' MB）':''):'';$('#fAudioClear').hidden=!a}
+function openEditor(i){
+  editIdx=i;
+  const s=i>=0?S.songs[i]:{title:'',artist:'',yt:'',lyrics:''};
+  $('#edHead').textContent=i>=0?'編輯歌曲':'新增歌曲';
+  $('#fTitle').value=s.title||'';$('#fArtist').value=s.artist||'';$('#fYt').value=s.yt||'';$('#fLyrics').value=s.lyrics||'';
+  $('#ytErr').hidden=true;$('#fDelete').hidden=i<0;delArm=false;$('#fDelete').textContent='刪除這首';$('#fLrc').value='';
+  $('#fAudio').value='';edAudio={act:'keep',file:null};showAudioName(s.audio||null);
+  $('#editor').showModal();
+}
+$('#edForm').addEventListener('submit',async e=>{
+  e.preventDefault();
+  const url=$('#fYt').value.trim();
+  if(url&&!ytId(url)){$('#ytErr').hidden=false;$('#fYt').focus();return}
+  const data={title:$('#fTitle').value.trim()||'未命名',artist:$('#fArtist').value.trim(),yt:url,lyrics:$('#fLyrics').value};
+  const sid=editIdx<0?uid():S.songs[editIdx].id;
+  let audioChanged=false;
+  if(edAudio.act==='set'){
+    try{await DB.put(sid,edAudio.file)}catch(err){toast('存不下這個音檔，可能是裝置空間不夠',5000);return}
+    data.audio={name:edAudio.file.name,size:edAudio.file.size};audioChanged=true;
+  }else if(edAudio.act==='clear'){await DB.del(sid);data.audio=null;audioChanged=true}
+  if(editIdx<0){
+    S.songs.push(Object.assign({id:sid},data));save();$('#editor').close();
+    const wasEmpty=S.songs.length===1;
+    if(wasEmpty)loadSong(0,false);else renderPlaylist();
+    toast('已加入歌單');
+  }else{
+    const s=S.songs[editIdx];const ytChanged=audioChanged||ytId(s.yt)!==ytId(url);
+    Object.assign(s,data);save();$('#editor').close();
+    if(editIdx===S.cur){
+      if(ytChanged)loadSong(S.cur,false);else{renderNow();renderLyrics();renderPlaylist()}
+    }else renderPlaylist();
+    toast('已儲存');
+  }
+});
+$('#fCancel').onclick=()=>$('#editor').close();
+$('#fDelete').onclick=()=>{
+  if(!delArm){delArm=true;$('#fDelete').textContent='再按一次確定刪除';return}
+  const wasCur=editIdx===S.cur;
+  DB.del(S.songs[editIdx].id);
+  S.songs.splice(editIdx,1);
+  if(editIdx<S.cur)S.cur--;
+  save();$('#editor').close();
+  if(wasCur)loadSong(Math.min(S.cur,S.songs.length-1),false);else renderPlaylist();
+  toast('已刪除');
+};
+$('#fAudio').addEventListener('change',e=>{
+  const f=e.target.files[0];if(!f)return;
+  edAudio={act:'set',file:f};showAudioName({name:f.name,size:f.size});
+  if(!$('#fTitle').value)$('#fTitle').value=f.name.replace(/\.[^.]+$/,'');
+});
+$('#fAudioClear').onclick=()=>{edAudio={act:'clear',file:null};$('#fAudio').value='';showAudioName(null)};
+$('#fLrc').addEventListener('change',e=>{
+  const f=e.target.files[0];if(!f)return;
+  f.text().then(t=>{$('#fLyrics').value=t;if(!$('#fTitle').value){const m=t.match(/\[ti:(.*?)\]/i);if(m)$('#fTitle').value=m[1].trim()}if(!$('#fArtist').value){const m=t.match(/\[ar:(.*?)\]/i);if(m)$('#fArtist').value=m[1].trim()}});
+});
+
+// ---------- backup ----------
+const backupText=()=>JSON.stringify({app:'utaloop',version:1,songs:S.songs},null,2);
+function importText(t){
+  let data;try{data=JSON.parse(t)}catch(e){toast('看不懂這份備份，請確認是完整的備份文字');return}
+  const list=Array.isArray(data)?data:data&&data.songs;
+  if(!Array.isArray(list)){toast('這份資料裡沒有歌單');return}
+  let added=0,updated=0;
+  for(const r of list){
+    if(!r||typeof r!=='object')continue;
+    const song={id:String(r.id||uid()),title:String(r.title||'未命名'),artist:String(r.artist||''),yt:String(r.yt||''),lyrics:String(r.lyrics||'')};
+    if(r.audio&&typeof r.audio==='object')song.audio={name:String(r.audio.name||'音檔'),size:+r.audio.size||0};
+    const at=S.songs.findIndex(s=>s.id===song.id);
+    if(at>=0){S.songs[at]=song;updated++}else{S.songs.push(song);added++}
+  }
+  save();loadSong(S.cur,false);
+  toast(`匯入完成：新增 ${added} 首，更新 ${updated} 首`);
+}
+$('#btnExport').onclick=()=>{
+  const blob=new Blob([backupText()],{type:'application/json'});
+  const a=document.createElement('a');a.href=URL.createObjectURL(blob);
+  a.download='utaloop-backup-'+new Date().toISOString().slice(0,10)+'.json';
+  document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(a.href),2000);
+};
+$('#btnCopy').onclick=()=>{
+  const t=backupText();
+  const fallback=()=>{const ta=$('#pasteImport');ta.value=t;ta.focus();ta.select();toast('已把備份文字放進下面的框框，請手動複製')};
+  if(navigator.clipboard&&navigator.clipboard.writeText)navigator.clipboard.writeText(t).then(()=>toast('已複製備份文字'),fallback);else fallback();
+};
+$('#fileImport').addEventListener('change',e=>{const f=e.target.files[0];if(f)f.text().then(importText);e.target.value=''});
+$('#btnPasteImport').onclick=()=>{const t=$('#pasteImport').value.trim();if(t)importText(t);else toast('框框裡還沒有文字')};
+$('#setClose').onclick=()=>$('#settings').close();
+
+// ---------- wake lock & fullscreen ----------
+let wl=null;
+async function keepAwake(){try{if('wakeLock' in navigator&&!wl){wl=await navigator.wakeLock.request('screen');wl.addEventListener('release',()=>{wl=null})}}catch(e){}}
+document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible'&&isPlaying())keepAwake()});
+const root=document.documentElement;
+const reqFs=root.requestFullscreen||root.webkitRequestFullscreen;
+if(reqFs&&(document.fullscreenEnabled||document.webkitFullscreenEnabled))$('#btnFull').hidden=false;
+$('#btnFull').onclick=()=>{
+  const fsEl=document.fullscreenElement||document.webkitFullscreenElement;
+  try{if(fsEl)(document.exitFullscreen||document.webkitExitFullscreen).call(document);else{const p=reqFs.call(root);if(p&&p.catch)p.catch(()=>toast('這個瀏覽器不能全螢幕'))}}catch(e){toast('這個瀏覽器不能全螢幕')}
+};
+
+// ---------- controls ----------
+$('#btnPlay').onclick=()=>{if(!S.songs.length){openEditor(-1);return}isPlaying()?pause():play()};
+$('#btnNext').onclick=()=>next();
+$('#btnPrev').onclick=()=>prev();
+$('#btnMode').onclick=()=>{S.mode={all:'one',one:'shuffle',shuffle:'all'}[S.mode];save();applyView()};
+$('#selRepeat').onchange=e=>{S.repeat=+e.target.value||1;playCount=0;save()};
+$('#tgRuby').onclick=()=>{S.ruby=!S.ruby;save();applyView()};
+$('#tgTrans').onclick=()=>{S.trans=!S.trans;save();applyView()};
+$('#tgVideo').onclick=()=>{S.smallVideo=!S.smallVideo;save();applyView()};
+$('#fontUp').onclick=()=>{S.size=Math.min(1.8,Math.round((S.size+0.1)*10)/10);save();applyView();if(lineEls[active])scrollToLine(lineEls[active])};
+$('#fontDown').onclick=()=>{S.size=Math.max(0.7,Math.round((S.size-0.1)*10)/10);save();applyView();if(lineEls[active])scrollToLine(lineEls[active])};
+$('#btnTiming').onclick=()=>timing?stopTiming():startTiming();
+$('#btnEditCur').onclick=()=>{if(S.songs.length)openEditor(S.cur);else openEditor(-1)};
+$('#btnAdd').onclick=()=>openEditor(-1);
+$('#btnSettings').onclick=()=>{$('#pasteImport').value='';$('#settings').showModal()};
+$('#btnList').onclick=()=>{document.body.classList.toggle('show-list');renderPlaylist()};
+$('#tkStamp').onclick=stamp;
+$('#tkBack').onclick=stampBack;
+$('#tkDone').onclick=()=>stopTiming();
+seekEl.addEventListener('input',()=>{seeking=true;$('#tcur').textContent=fmtShort(+seekEl.value)});
+seekEl.addEventListener('change',()=>{seek(+seekEl.value);seeking=false;userScrollUntil=0});
+
+lyricsBox.addEventListener('click',e=>{
+  const el=e.target.closest('.line');if(!el)return;
+  const i=+el.dataset.i;
+  if(timing){
+    tk=i;const t0=i>0?lines[i-1].t:0;
+    seek(Math.max(0,(t0||0)-0.5));play();updateTimingTarget();return;
+  }
+  if(lines[i]&&lines[i].t!=null){seek(lines[i].t);userScrollUntil=0;if(!isPlaying())play()}
+});
+
+$('#plist').addEventListener('click',e=>{
+  const b=e.target.closest('button[data-act]');if(!b)return;
+  const i=+b.dataset.i,act=b.dataset.act;
+  if(act==='play'){document.body.classList.remove('show-list');loadSong(i,true)}
+  else if(act==='edit')openEditor(i);
+  else if(act==='up'||act==='down'){
+    const j=act==='up'?i-1:i+1;if(j<0||j>=S.songs.length)return;
+    [S.songs[i],S.songs[j]]=[S.songs[j],S.songs[i]];
+    if(S.cur===i)S.cur=j;else if(S.cur===j)S.cur=i;
+    save();renderPlaylist();
+  }
+});
+
+document.addEventListener('keydown',e=>{
+  if(e.target.closest('input,textarea,select,dialog'))return;
+  if(e.code==='Space'){e.preventDefault();timing?stamp():(isPlaying()?pause():play())}
+  else if(e.code==='ArrowRight')next();
+  else if(e.code==='ArrowLeft')prev();
+});
+
+applyView();
+loadSong(S.cur,false);
+})();
+</script>
+</body>
+</html>
