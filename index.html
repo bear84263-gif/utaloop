@@ -324,6 +324,7 @@ dialog::backdrop{background:rgba(8,12,24,.55)}
     <div class="row tools-row">
       <button type="button" id="fFind" class="ghost">🔍 自動找歌詞</button>
       <button type="button" id="fKana" class="ghost">あ 自動標假名</button>
+      <button type="button" id="fSync" class="ghost">⏱ 自動套用時間</button>
       <span class="grow"></span>
       <button type="button" id="fEarlier" class="ghost">整首提早 0.5 秒</button>
       <button type="button" id="fLater" class="ghost">延後 0.5 秒</button>
@@ -338,7 +339,8 @@ dialog::backdrop{background:rgba(8,12,24,.55)}
         <li>每行一句。前面可以加時間：<code>[01:23.45] 歌詞</code>（分:秒）。</li>
         <li>漢字後面用大括號標假名：<code>夜{よる}の街{まち}</code>。</li>
         <li>要把假名標在一整段上（例如含平假名的詞），前面加直線：<code>｜明日{あした}</code>。</li>
-        <li>中文翻譯寫在下一行，用 <code>&gt;</code> 開頭：<code>&gt; 走在夜晚的街道</code>。</li>
+        <li>中文翻譯寫在日文的下一行。可以用 <code>&gt;</code> 開頭，不加也行：沒有假名的行會自動當成翻譯。</li>
+        <li>貼上沒有時間的歌詞後，按「⏱ 自動套用時間」，會從歌詞資料庫找同一首歌的時間對上去，你的翻譯會保留。</li>
         <li>不知道時間沒關係，先不寫，存好後按「對時」邊聽邊按就好。</li>
         <li>網路上下載的 LRC 歌詞檔可以直接貼進來。</li>
         <li>選音檔時如果歌名還空著，會自動用檔名當歌名。</li>
@@ -438,6 +440,10 @@ const RUBY=/(?:[|｜]([^|｜{《\n]+?)|([㐀-䶿一-鿿豈-﫿々〆ヵヶ]+))(?
 function ruby(s){
   return esc(s).replace(RUBY,(m,a,b,c,d)=>`<ruby>${a||b}<rt>${c!==undefined?c:d}</rt></ruby>`);
 }
+// A line with Chinese characters but no kana is a translation of the line before it.
+const KANA_RE=/[\u3040-\u30ff]/,HAN_RE=/[\u3400-\u9FFF\uF900-\uFAFF]/;
+const looksChinese=x=>!KANA_RE.test(x)&&HAN_RE.test(x);
+function addTr(group,tr){for(const l of group)l.tr=l.tr?l.tr+' / '+tr:tr}
 function parseLyrics(text){
   const out=[];let group=[],multi=false;
   for(const raw of String(text||'').split(/\r?\n/)){
@@ -451,9 +457,14 @@ function parseLyrics(text){
     const m=line.match(/^((?:\[\d{1,3}:\d{1,2}(?:[.:]\d{1,3})?\]\s*)+)(.*)$/);
     if(m){
       const times=[...m[1].matchAll(/\[(\d{1,3}):(\d{1,2}(?:[.:]\d{1,3})?)\]/g)].map(x=>+x[1]*60+parseFloat(x[2].replace(':','.')));
+      const body=m[2].trim();
+      if(group.length&&group[0].t===times[0]&&looksChinese(body)&&!looksChinese(group[0].jp)){addTr(group,body);continue}
       if(times.length>1)multi=true;
-      group=times.map(t=>({t,jp:m[2].trim(),tr:''}));
-    }else group=[{t:null,jp:line,tr:''}];
+      group=times.map(t=>({t,jp:body,tr:''}));
+    }else{
+      if(group.length&&looksChinese(line)&&!looksChinese(group[0].jp)){addTr(group,line);continue}
+      group=[{t:null,jp:line,tr:''}];
+    }
     out.push(...group);
   }
   if(multi)out.sort((a,b)=>(a.t??1e9)-(b.t??1e9));
@@ -513,7 +524,7 @@ function renderLyrics(){
     d.innerHTML=`<div class="jp">${l.jp?ruby(l.jp):'♪'}</div>`+(l.tr?`<div class="tr">${esc(l.tr)}</div>`:'');
     frag.appendChild(d);return d;
   });
-  if(!lines.some(l=>l.t!=null)){const h=document.createElement('p');h.className='untimed-hint';h.textContent='這首歌詞還沒有時間，所以不會跟著音樂跑。按上面的「對時」邊聽邊按，或在「編輯」裡按「自動找歌詞」換成有時間的版本。';lyricsBox.appendChild(h)}
+  if(!lines.some(l=>l.t!=null)){const h=document.createElement('p');h.className='untimed-hint';h.textContent='這首歌詞還沒有時間，所以不會跟著音樂跑。按上面的「對時」邊聽邊按，或在「編輯」裡按「⏱ 自動套用時間」。';lyricsBox.appendChild(h)}
   lyricsBox.appendChild(frag);
   lyricsBox.scrollTop=0;
   updateTimingTarget();
@@ -849,6 +860,7 @@ async function addKana(text){
   return String(text).split('\n').map(line=>{
     if(/^\s*[>＞]/.test(line)||/[{《]/.test(line))return line;
     const m=line.match(/^(\s*(?:\[[^\]]*\]\s*)*)(.*)$/);
+    if(looksChinese(m[2]))return line;
     return m[1]+annotate(tok,m[2]);
   }).join('\n');
 }
@@ -879,6 +891,63 @@ $('#fFind').onclick=async()=>{
     };
     box.appendChild(b);
   });
+};
+// ---------- copy timing from a database version onto pasted lyrics ----------
+function normJa(x){return toHira(String(x).normalize('NFKC').replace(/\{[^}]*\}|《[^》]*》|[|｜]/g,'').toLowerCase()).replace(/[\s\p{P}\p{S}]/gu,'')}
+function bigrams(x){if(x.length<2)return x?[x]:[];const a=[];for(let i=0;i<x.length-1;i++)a.push(x.slice(i,i+2));return a}
+function sim(a,b){
+  if(!a||!b)return 0;if(a===b)return 1;
+  const A=bigrams(a),B=bigrams(b),cnt=new Map();A.forEach(x=>cnt.set(x,(cnt.get(x)||0)+1));
+  let c=0;for(const x of B){const v=cnt.get(x);if(v){c++;cnt.set(x,v-1)}}
+  return 2*c/(A.length+B.length);
+}
+function alignTimes(mine,ref){ // mine: parsed lines; ref: parsed lines with t. Returns number matched.
+  const U=mine.map(l=>normJa(l.jp)),R=ref.map(l=>normJa(l.jp)),n=U.length,m=R.length;
+  const S=Array.from({length:n+1},()=>new Float64Array(m+1)),Bk=Array.from({length:n+1},()=>new Uint8Array(m+1));
+  for(let i=1;i<=n;i++)for(let j=1;j<=m;j++){
+    let best=S[i-1][j],b=1;
+    if(S[i][j-1]>best){best=S[i][j-1];b=2}
+    const v=sim(U[i-1],R[j-1]);
+    if(v>=0.45&&S[i-1][j-1]+v>best){best=S[i-1][j-1]+v;b=3}
+    S[i][j]=best;Bk[i][j]=b;
+  }
+  const t=new Array(n).fill(null);let i=n,j=m,hit=0;
+  while(i>0&&j>0){const b=Bk[i][j];if(b===3){t[i-1]=ref[j-1].t;hit++;i--;j--}else if(b===1)i--;else j--}
+  // fill gaps between matched lines evenly
+  let last=-1;
+  for(let k=0;k<n;k++){
+    if(t[k]==null)continue;
+    if(last>=0&&k-last>1){for(let q=last+1;q<k;q++)t[q]=t[last]+(t[k]-t[last])*(q-last)/(k-last)}
+    last=k;
+  }
+  return {times:t,hit};
+}
+$('#fSync').onclick=async()=>{
+  const title=$('#fTitle').value.trim(),artist=$('#fArtist').value.trim();
+  const box=$('#fResults');box.hidden=false;
+  const mine=parseLyrics($('#fLyrics').value).filter(l=>l.jp);
+  if(!mine.length){box.innerHTML='<div class="note">先把歌詞貼進上面的框框。</div>';return}
+  if(!title){box.innerHTML='<div class="note">先填歌名，才能找同一首歌的時間。</div>';return}
+  box.innerHTML='<div class="note">正在找這首歌的時間…</div>';
+  let list;
+  try{list=await searchLyrics(title,artist)}catch(e){box.innerHTML='<div class="note">連不上歌詞資料庫，請確認有網路，或稍後再試。</div>';return}
+  const cur=editIdx>=0?S.songs[editIdx]:null;
+  list=rankLyrics(list.filter(x=>x.syncedLyrics),cur&&cur.dur).slice(0,5);
+  if(!list.length){box.innerHTML='<div class="note">資料庫裡沒有這首有時間的版本。可以試試改歌名或歌手再按一次，或存檔後用「對時」。</div>';return}
+  let best=null;
+  for(const x of list){
+    const ref=parseLyrics(x.syncedLyrics).filter(l=>l.t!=null&&l.jp);
+    const r=alignTimes(mine,ref);
+    if(!best||r.hit>best.hit)best=Object.assign(r,{src:x});
+  }
+  const ratio=best.hit/mine.length;
+  if(ratio<0.3){box.innerHTML=`<div class="note">只對上 ${best.hit} / ${mine.length} 句，可能是不同版本的歌詞，所以沒有套用。可以改用「對時」。</div>`;return}
+  mine.forEach((l,k)=>{l.t=best.times[k]});
+  let text=serialize(mine);
+  try{text=await addKana(text)}catch(e){}
+  $('#fLyrics').value=text;updatePreview();
+  const miss=mine.filter(l=>l.t==null).length;
+  box.innerHTML=`<div class="note">對上 ${best.hit} / ${mine.length} 句${miss?`，有 ${miss} 句在開頭或結尾對不上，還是沒有時間`:''}。翻譯都保留了，也順便標好假名。按「儲存」生效；如果整首快或慢，用「提早／延後 0.5 秒」調整。</div>`;
 };
 $('#fKana').onclick=async()=>{
   const ta=$('#fLyrics');if(!ta.value.trim()){toast('歌詞是空的');return}
