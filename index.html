@@ -9,7 +9,7 @@
 <meta name="mobile-web-app-capable" content="yes">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Zen+Maru+Gothic:wght@500;700&family=M+PLUS+Rounded+1c:wght@500;700;800&family=Noto+Sans+TC:wght@400;500;700&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Zen+Maru+Gothic:wght@500;700&family=M+PLUS+Rounded+1c:wght@500;700;800&family=Zen+Kaku+Gothic+New:wght@500;700&family=Noto+Sans+TC:wght@400;500;700&display=swap">
 <style>
 /* Layout: tablet landscape = player + playlist column on the left, big scrolling lyrics on the right; portrait/phone = player on top, lyrics fill the rest, playlist swaps in. */
 :root{
@@ -170,6 +170,12 @@ dialog::backdrop{background:rgba(8,12,24,.55)}
   --f-jp:"M PLUS Rounded 1c","Zen Maru Gothic","Hiragino Maru Gothic ProN",system-ui,sans-serif;
   --f-ui:"M PLUS Rounded 1c","Zen Maru Gothic","Noto Sans TC","PingFang TC",system-ui,sans-serif;
   color-scheme:light}
+:root[data-skin="cream"][data-theme="dark"]{
+  --bg:#2a231c; --panel:#352c23; --ink:#f3e6d2; --muted:#c2ad92; --line:#4d4033;
+  --accent:#a9c08f; --accent-ink:#2a231c; --hi:#f0a27f; --hi-bg:rgba(249,215,166,.22); --dim:#8f7d68; --danger:#f08a70; color-scheme:dark}
+@media (prefers-color-scheme: dark){:root[data-skin="cream"]:not([data-theme="light"]){
+  --bg:#2a231c; --panel:#352c23; --ink:#f3e6d2; --muted:#c2ad92; --line:#4d4033;
+  --accent:#a9c08f; --accent-ink:#2a231c; --hi:#f0a27f; --hi-bg:rgba(249,215,166,.22); --dim:#8f7d68; --danger:#f08a70; color-scheme:dark}}
 :root[data-skin="cream"] body{background-color:var(--bg);background-image:radial-gradient(var(--line) 1.2px,transparent 1.4px);background-size:22px 22px}
 :root[data-skin="cream"] .logo{background:var(--hi);color:var(--panel);font-family:var(--f-jp);border-radius:30%;transform:rotate(-6deg);box-shadow:inset 0 0 0 2px var(--panel),0 0 0 2px var(--hi)}
 :root[data-skin="cream"] .brand{font-family:var(--f-jp);font-weight:800}
@@ -190,6 +196,49 @@ dialog::backdrop{background:rgba(8,12,24,.55)}
 :root[data-skin="cream"] .song.cur .num{color:var(--hi)}
 :root[data-skin="cream"] dialog{border-radius:24px;border-width:2px}
 :root[data-skin="cream"] .stamp{color:var(--panel)}
+
+/* ---- 海霧插畫 skin: flat line-art illustration, thick navy outlines, Pantone mist palette ---- */
+:root[data-skin="sea"]{
+  --bg:#b8d0e3; --panel:#f7f8fc; --ink:#272e4d; --muted:#5d6774; --line:#3c446c;
+  --accent:#3c446c; --accent-ink:#f7f8fc; --hi:#3c446c; --hi-bg:#d9c4c4; --dim:#848e9c; --danger:#a8443a;
+  --field:#eef1f7; --doodle:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='440' height='320' fill='none' stroke='%233c446c' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round' opacity='.38'%3E%3Cpath d='M30 40h14m12 0h30M300 28h12m12 0h14M60 262h30m12 0h8M330 238h18m12 0h26M200 150h10m12 0h22M380 300h10m10 0h24'/%3E%3Cpath d='M150 64l12 12m0-12l-12 12M392 118l10 10m0-10l-10 10'/%3E%3Ccircle cx='106' cy='168' r='9'/%3E%3Cpath d='M246 276l8 8 14-16'/%3E%3Crect x='372' y='40' width='16' height='16'/%3E%3Cpath d='M22 150l11 8-11 8z'/%3E%3C/svg%3E");
+  --f-jp:"Zen Kaku Gothic New","Noto Sans JP","Hiragino Sans",system-ui,sans-serif;
+  --f-ui:"Noto Sans TC","Zen Kaku Gothic New","PingFang TC",system-ui,sans-serif;
+  color-scheme:light}
+@media (prefers-color-scheme: dark){:root[data-skin="sea"]:not([data-theme="light"]){
+  --bg:#1f2541; --panel:#2a3153; --ink:#e6e9f2; --muted:#b1c1cd; --line:#b8d0e3;
+  --accent:#b8d0e3; --accent-ink:#1f2541; --hi:#f1dede; --hi-bg:rgba(217,196,196,.24); --dim:#8f99ad; --danger:#f0a397;
+  --field:#232a48; --doodle:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='440' height='320' fill='none' stroke='%23b8d0e3' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round' opacity='.22'%3E%3Cpath d='M30 40h14m12 0h30M300 28h12m12 0h14M60 262h30m12 0h8M330 238h18m12 0h26M200 150h10m12 0h22M380 300h10m10 0h24'/%3E%3Cpath d='M150 64l12 12m0-12l-12 12M392 118l10 10m0-10l-10 10'/%3E%3Ccircle cx='106' cy='168' r='9'/%3E%3Cpath d='M246 276l8 8 14-16'/%3E%3Crect x='372' y='40' width='16' height='16'/%3E%3Cpath d='M22 150l11 8-11 8z'/%3E%3C/svg%3E"); color-scheme:dark}}
+:root[data-skin="sea"][data-theme="dark"]{
+  --bg:#1f2541; --panel:#2a3153; --ink:#e6e9f2; --muted:#b1c1cd; --line:#b8d0e3;
+  --accent:#b8d0e3; --accent-ink:#1f2541; --hi:#f1dede; --hi-bg:rgba(217,196,196,.24); --dim:#8f99ad; --danger:#f0a397;
+  --field:#232a48; --doodle:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='440' height='320' fill='none' stroke='%23b8d0e3' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round' opacity='.22'%3E%3Cpath d='M30 40h14m12 0h30M300 28h12m12 0h14M60 262h30m12 0h8M330 238h18m12 0h26M200 150h10m12 0h22M380 300h10m10 0h24'/%3E%3Cpath d='M150 64l12 12m0-12l-12 12M392 118l10 10m0-10l-10 10'/%3E%3Ccircle cx='106' cy='168' r='9'/%3E%3Cpath d='M246 276l8 8 14-16'/%3E%3Crect x='372' y='40' width='16' height='16'/%3E%3Cpath d='M22 150l11 8-11 8z'/%3E%3C/svg%3E"); color-scheme:dark}
+:root[data-skin="sea"] body{background-color:var(--bg);background-image:var(--doodle);background-size:440px 320px}
+:root[data-skin="sea"] .brand{font-weight:700;letter-spacing:.06em}
+:root[data-skin="sea"] .logo{background:var(--hi-bg);color:var(--ink);border:2.5px solid var(--line);border-radius:50%}
+:root[data-skin="sea"] .ghost,:root[data-skin="sea"] .chip,:root[data-skin="sea"] .primary,:root[data-skin="sea"] .danger{border:2px solid var(--line);border-radius:10px;font-weight:500}
+:root[data-skin="sea"] .ghost,:root[data-skin="sea"] .chip{background:var(--panel)}
+:root[data-skin="sea"] .danger{color:var(--danger);border-color:var(--danger)}
+:root[data-skin="sea"] .chip[aria-pressed="true"],:root[data-skin="sea"] .primary{background:var(--accent);color:var(--accent-ink);border-color:var(--line)}
+:root[data-skin="sea"] .stage,:root[data-skin="sea"] .playlist{border:2.5px solid var(--line);border-radius:14px}
+:root[data-skin="sea"] .lyr-tools{border-bottom:2.5px dashed var(--line)}
+:root[data-skin="sea"] .player{border:2.5px solid var(--line);border-radius:14px}
+:root[data-skin="sea"] .player[data-kind="clock"],:root[data-skin="sea"] .player[data-kind="audio"]{background:var(--panel);border:2.5px solid var(--line)}
+:root[data-skin="sea"] .transport button{border:2.5px solid var(--line);background:var(--panel);color:var(--ink)}
+:root[data-skin="sea"] .transport .play{background:var(--accent);color:var(--accent-ink)}
+:root[data-skin="sea"] .now-title{font-family:var(--f-jp)}
+:root[data-skin="sea"] .now,:root[data-skin="sea"] .seekrow{background:var(--panel);border:2px solid var(--line);border-radius:12px;padding:8px 12px}
+:root[data-skin="sea"] .line{border-radius:8px}
+:root[data-skin="sea"] .line.on{background:var(--hi-bg);color:var(--ink)}
+:root[data-skin="sea"] .line.on .jp{color:var(--ink);font-weight:700}
+:root[data-skin="sea"] .line.on rt{color:var(--accent)}
+:root[data-skin="sea"] .song.cur{background:var(--hi-bg)}
+:root[data-skin="sea"] .song.cur .num{color:var(--ink)}
+:root[data-skin="sea"] dialog{border:2.5px solid var(--line);border-radius:14px}
+:root[data-skin="sea"] .dlg input:not([type=file]),:root[data-skin="sea"] .dlg textarea{border:2px solid var(--line);background:var(--field)}
+:root[data-skin="sea"] .help,:root[data-skin="sea"] .results,:root[data-skin="sea"] .blog,:root[data-skin="sea"] .untimed-hint{border:2px dashed var(--line)}
+:root[data-skin="sea"] .stamp{background:var(--hi-bg);color:var(--ink);border:2.5px solid var(--line)}
+:root[data-skin="sea"] .song-tools button:hover{background:var(--field)}
 </style>
 </head>
 <body>
@@ -201,6 +250,7 @@ dialog::backdrop{background:rgba(8,12,24,.55)}
       <button id="btnBatch" class="ghost" type="button">⚡ 一次加入多首</button>
       <button id="btnAdd" class="ghost" type="button">＋ 新增歌曲</button>
       <button id="btnSkin" class="ghost" type="button">風格：簡約</button>
+      <button id="btnTheme" class="ghost" type="button">🌗 自動</button>
       <button id="btnSettings" class="ghost" type="button">備份</button>
     </div>
   </header>
@@ -362,7 +412,7 @@ const SAMPLE={id:'sample',title:'さくら さくら（範例）',artist:'日本
 
 let saved=null;
 try{saved=JSON.parse(localStorage.getItem(KEY)||'null')}catch(e){}
-const S=Object.assign({songs:[SAMPLE],cur:0,mode:'all',repeat:1,ruby:true,trans:true,size:1,smallVideo:false,skin:'simple'},saved||{});
+const S=Object.assign({songs:[SAMPLE],cur:0,mode:'all',repeat:1,ruby:true,trans:true,size:1,smallVideo:false,skin:'simple',themeMode:'auto'},saved||{});
 if(!Array.isArray(S.songs))S.songs=[SAMPLE];
 if(!(S.cur>=0&&S.cur<S.songs.length))S.cur=0;
 function save(){try{localStorage.setItem(KEY,JSON.stringify(S))}catch(e){}}
@@ -423,8 +473,15 @@ function toast(msg,ms){
 }
 
 function applyView(){
-  document.documentElement.dataset.skin=S.skin==='cream'?'cream':'simple';
-  $('#btnSkin').textContent='風格：'+(S.skin==='cream'?'和風奶油':'簡約');
+  const skins={simple:'簡約',cream:'和風奶油',sea:'海霧插畫'};
+  if(!skins[S.skin])S.skin='simple';
+  document.documentElement.dataset.skin=S.skin;
+  $('#btnSkin').textContent='風格：'+skins[S.skin];
+  const modes={auto:'🌗 自動',light:'☀️ 日間',dark:'🌙 夜間'};
+  if(!modes[S.themeMode])S.themeMode='auto';
+  if(S.themeMode==='auto')delete document.documentElement.dataset.theme;else document.documentElement.dataset.theme=S.themeMode;
+  $('#btnTheme').textContent=modes[S.themeMode];
+  $('#btnTheme').setAttribute('aria-label','日夜模式：'+modes[S.themeMode].slice(2));
   lyricsBox.classList.toggle('noruby',!S.ruby);
   lyricsBox.classList.toggle('notrans',!S.trans);
   $('#tgRuby').setAttribute('aria-pressed',S.ruby);
@@ -981,7 +1038,8 @@ $('#fontDown').onclick=()=>{S.size=Math.max(0.7,Math.round((S.size-0.1)*10)/10);
 $('#btnTiming').onclick=()=>timing?stopTiming():startTiming();
 $('#btnEditCur').onclick=()=>{if(S.songs.length)openEditor(S.cur);else openEditor(-1)};
 $('#btnAdd').onclick=()=>openEditor(-1);
-$('#btnSkin').onclick=()=>{S.skin=S.skin==='cream'?'simple':'cream';save();applyView()};
+$('#btnSkin').onclick=()=>{S.skin={simple:'cream',cream:'sea',sea:'simple'}[S.skin]||'simple';save();applyView()};
+$('#btnTheme').onclick=()=>{S.themeMode={auto:'light',light:'dark',dark:'auto'}[S.themeMode]||'auto';save();applyView()};
 function updatePreview(){
   const ls=parseLyrics($('#fLyrics').value).slice(0,6);
   $('#fPreview').innerHTML=ls.length?ls.map(l=>`<div>${l.jp?ruby(l.jp):'♪'}</div>`+(l.tr?`<div class="tr">${esc(l.tr)}</div>`:'')).join(''):'<span class="preview-lbl">貼上歌詞後會顯示在這裡</span>';
