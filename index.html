@@ -70,6 +70,18 @@ body.small-video .player:not([data-kind="clock"]){max-height:120px}
 .loopopts select{border:none;background:transparent;font-weight:700;padding:0 2px}
 
 .playlist{display:none;flex-direction:column;min-height:0;background:var(--panel);border:1px solid var(--line);border-radius:14px}
+.folder-bar{display:flex;gap:6px;flex-wrap:wrap;padding:4px 10px 8px;border-bottom:1px solid var(--line)}
+.folder-bar button{border:1px solid var(--line);background:var(--panel);border-radius:999px;padding:6px 12px;min-height:36px;font-size:14px;white-space:nowrap}
+.folder-bar button[aria-pressed="true"]{background:var(--accent);border-color:var(--accent);color:var(--accent-ink);font-weight:700}
+.folder-bar .cnt{opacity:.7;margin-left:4px;font-variant-numeric:tabular-nums}
+.folder-bar .fmanage{border-style:dashed;color:var(--muted)}
+:root[data-skin="sea"] .folder-bar{border-bottom:2px dashed var(--line)}
+:root[data-skin="sea"] .folder-bar button{border:2px solid var(--line);border-radius:10px}
+:root[data-skin="sea"] .folder-bar .fmanage{border-style:dashed}
+.frow{display:flex;gap:8px;align-items:center}
+.frow input{flex:1;min-width:0}
+.dlg select{border:1px solid var(--line);border-radius:10px;padding:10px 12px;background:var(--bg);color:var(--ink);font-size:16px}
+:root[data-skin="sea"] .dlg select{border:2px solid var(--line);background:var(--field)}
 .playlist h2{margin:0;padding:12px 14px 6px;font-size:14px;letter-spacing:.08em;color:var(--muted);font-weight:500}
 #plist{list-style:none;margin:0;padding:4px 6px 8px;overflow:auto;min-height:0;flex:1}
 .song{display:flex;align-items:center;gap:4px;border-radius:10px}
@@ -279,7 +291,8 @@ dialog::backdrop{background:rgba(8,12,24,.55)}
           <select id="selRepeat"><option value="1">1</option><option value="2">2</option><option value="3">3</option><option value="5">5</option></select> 次</label>
       </div>
       <section class="playlist" aria-label="歌單">
-        <h2>歌單 · <span id="plCount">0</span> 首</h2>
+        <h2 id="plHead">歌單 · <span id="plCount">0</span> 首</h2>
+        <div id="folderBar" class="folder-bar" role="group" aria-label="資料夾"></div>
         <ol id="plist"></ol>
       </section>
     </aside>
@@ -323,6 +336,7 @@ dialog::backdrop{background:rgba(8,12,24,.55)}
       <span class="hint">音檔只存在這台裝置裡。YouTube 連結和音檔填一個就好。</span>
     </div>
     <p class="field-err" id="ytErr" hidden>看不懂這個連結。請貼 YouTube 影片頁面的網址，例如 https://youtu.be/xxxxxxxxxxx</p>
+    <label>資料夾<select id="fFolder"></select></label>
     <label>歌詞<textarea id="fLyrics" rows="8" spellcheck="false" placeholder="[00:12.50] 夜{よる}の街{まち}を歩{ある}く&#10;> 走在夜晚的街道"></textarea></label>
     <div class="row tools-row">
       <button type="button" id="fFind" class="ghost">🔍 自動找歌詞</button>
@@ -368,9 +382,20 @@ dialog::backdrop{background:rgba(8,12,24,.55)}
     <h3>或貼 YouTube 連結</h3>
     <p>一行一個。歌名會自動抓；想自己取名，就寫在連結前面，例如「マリーゴールド https://youtu.be/…」。</p>
     <textarea id="bLinks" rows="5" spellcheck="false" placeholder="https://youtu.be/…&#10;https://www.youtube.com/watch?v=…"></textarea>
+    <label>加到資料夾<select id="bFolder"></select></label>
     <label class="check"><input type="checkbox" id="bAuto" checked> 自動找歌詞，並標上假名</label>
     <div id="bLog" class="blog" hidden></div>
     <div class="row end"><button id="bClose" class="ghost" type="button">關閉</button><button id="bGo" class="primary" type="button">加入歌單</button></div>
+  </div>
+</dialog>
+
+<dialog id="folders">
+  <div class="dlg">
+    <h2>管理資料夾</h2>
+    <p>一首歌放在一個資料夾裡。切到某個資料夾時，循環播放只會播那個資料夾的歌。</p>
+    <div class="frow"><input id="newFolder" placeholder="新資料夾名稱，例如：跑步用" autocomplete="off"><button id="addFolder" class="primary" type="button">新增</button></div>
+    <div id="folderList" style="display:flex;flex-direction:column;gap:8px"></div>
+    <div class="row end"><button id="foldersClose" class="ghost" type="button">完成</button></div>
   </div>
 </dialog>
 
@@ -417,9 +442,11 @@ const SAMPLE={id:'sample',title:'さくら さくら（範例）',artist:'日本
 
 let saved=null;
 try{saved=JSON.parse(localStorage.getItem(KEY)||'null')}catch(e){}
-const S=Object.assign({songs:[SAMPLE],cur:0,mode:'all',repeat:1,ruby:true,trans:true,size:1,smallVideo:false,skin:'simple',themeMode:'auto'},saved||{});
+const S=Object.assign({songs:[SAMPLE],cur:0,mode:'all',repeat:1,ruby:true,trans:true,size:1,smallVideo:false,skin:'simple',themeMode:'auto',folders:[],view:'all'},saved||{});
 if(!Array.isArray(S.songs))S.songs=[SAMPLE];
 if(!(S.cur>=0&&S.cur<S.songs.length))S.cur=0;
+if(!Array.isArray(S.folders))S.folders=[];
+if(S.view!=='all'&&!S.folders.some(f=>f.id===S.view))S.view='all';
 function save(){try{localStorage.setItem(KEY,JSON.stringify(S))}catch(e){}}
 
 // ---------- audio files (IndexedDB) ----------
@@ -533,18 +560,73 @@ function renderLyrics(){
   updateTimingTarget();
 }
 
+function inView(s){return S.view==='all'||s.folder===S.view}
+function viewList(){const v=[];S.songs.forEach((s,i)=>{if(inView(s))v.push(i)});return v}
+function folderName(id){const f=S.folders.find(f=>f.id===id);return f?f.name:''}
+function renderFolderBar(){
+  const bar=$('#folderBar');bar.innerHTML='';
+  const mk=(id,label,count)=>{const b=document.createElement('button');b.type='button';b.dataset.view=id;b.setAttribute('aria-pressed',S.view===id);b.innerHTML=esc(label)+`<span class="cnt">${count}</span>`;bar.appendChild(b)};
+  mk('all','全部',S.songs.length);
+  S.folders.forEach(f=>mk(f.id,f.name,S.songs.filter(s=>s.folder===f.id).length));
+  const m=document.createElement('button');m.type='button';m.className='fmanage';m.dataset.view='__manage';m.textContent=S.folders.length?'⚙ 管理':'＋ 資料夾';bar.appendChild(m);
+}
 function renderPlaylist(){
   const ul=$('#plist');ul.innerHTML='';
-  $('#plCount').textContent=S.songs.length;
-  $('#btnList').textContent=document.body.classList.contains('show-list')?'看歌詞':`歌單 (${S.songs.length})`;
-  S.songs.forEach((s,i)=>{
+  const v=viewList();
+  $('#plCount').textContent=v.length;
+  $('#plHead').firstChild.textContent=(S.view==='all'?'歌單':folderName(S.view))+' · ';
+  $('#btnList').textContent=document.body.classList.contains('show-list')?'看歌詞':`歌單 (${v.length})`;
+  renderFolderBar();
+  if(!v.length){ul.innerHTML='<li class="sa" style="padding:14px 10px;white-space:normal">這個資料夾還沒有歌。新增歌曲時選這個資料夾，或在歌的「編輯」裡改資料夾。</li>';return}
+  v.forEach((i,pos)=>{
+    const s=S.songs[i];
     const li=document.createElement('li');li.className='song'+(i===S.cur?' cur':'');
-    const sub=[s.artist,s.audio?'🎵 音檔':ytId(s.yt)?'':'沒有音源'].filter(Boolean).join(' · ');
-    li.innerHTML=`<button type="button" class="song-main" data-act="play" data-i="${i}"><span class="num">${i===S.cur?'♪':i+1}</span><span class="meta"><span class="st">${esc(s.title||'未命名')}</span><span class="sa">${esc(sub)}</span></span></button>`+
-      `<span class="song-tools"><button type="button" data-act="up" data-i="${i}" aria-label="往上移"${i===0?' disabled':''}>↑</button><button type="button" data-act="down" data-i="${i}" aria-label="往下移"${i===S.songs.length-1?' disabled':''}>↓</button><button type="button" data-act="edit" data-i="${i}">編輯</button></span>`;
+    const sub=[s.artist,S.view==='all'&&s.folder?'📁 '+folderName(s.folder):'',s.audio?'🎵 音檔':ytId(s.yt)?'':'沒有音源'].filter(Boolean).join(' · ');
+    li.innerHTML=`<button type="button" class="song-main" data-act="play" data-i="${i}"><span class="num">${i===S.cur?'♪':pos+1}</span><span class="meta"><span class="st">${esc(s.title||'未命名')}</span><span class="sa">${esc(sub)}</span></span></button>`+
+      `<span class="song-tools"><button type="button" data-act="up" data-i="${i}" aria-label="往上移"${pos===0?' disabled':''}>↑</button><button type="button" data-act="down" data-i="${i}" aria-label="往下移"${pos===v.length-1?' disabled':''}>↓</button><button type="button" data-act="edit" data-i="${i}">編輯</button></span>`;
     ul.appendChild(li);
   });
 }
+$('#folderBar').addEventListener('click',e=>{
+  const b=e.target.closest('button[data-view]');if(!b)return;
+  if(b.dataset.view==='__manage'){openFolders();return}
+  S.view=b.dataset.view;save();renderPlaylist();
+});
+function folderOptions(sel,value){
+  sel.innerHTML='<option value="">不放資料夾</option>'+S.folders.map(f=>`<option value="${esc(f.id)}">${esc(f.name)}</option>`).join('');
+  sel.value=S.folders.some(f=>f.id===value)?value:'';
+}
+function openFolders(){renderFolderList();$('#newFolder').value='';$('#folders').showModal()}
+function renderFolderList(){
+  const box=$('#folderList');box.innerHTML='';
+  if(!S.folders.length){box.innerHTML='<p>還沒有資料夾。</p>';return}
+  S.folders.forEach(f=>{
+    const row=document.createElement('div');row.className='frow';
+    const n=S.songs.filter(s=>s.folder===f.id).length;
+    row.innerHTML=`<input value="${esc(f.name)}" aria-label="資料夾名稱" data-id="${esc(f.id)}"><span class="sa" style="flex:none">${n} 首</span><button type="button" class="danger" data-del="${esc(f.id)}">刪除</button>`;
+    box.appendChild(row);
+  });
+}
+$('#addFolder').onclick=()=>{
+  const name=$('#newFolder').value.trim();if(!name){$('#newFolder').focus();return}
+  S.folders.push({id:uid(),name});save();$('#newFolder').value='';renderFolderList();renderPlaylist();toast('已新增「'+name+'」');
+};
+$('#newFolder').addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();$('#addFolder').click()}});
+$('#folderList').addEventListener('change',e=>{
+  const inp=e.target.closest('input[data-id]');if(!inp)return;
+  const f=S.folders.find(f=>f.id===inp.dataset.id);const name=inp.value.trim();
+  if(f&&name){f.name=name;save();renderPlaylist()}else if(f)inp.value=f.name;
+});
+$('#folderList').addEventListener('click',e=>{
+  const b=e.target.closest('button[data-del]');if(!b)return;
+  if(b.dataset.armed!=='1'){b.dataset.armed='1';b.textContent='確定刪除？';return}
+  const id=b.dataset.del;
+  S.folders=S.folders.filter(f=>f.id!==id);
+  S.songs.forEach(s=>{if(s.folder===id)s.folder=''});
+  if(S.view===id)S.view='all';
+  save();renderFolderList();renderPlaylist();toast('資料夾已刪除，裡面的歌還在「全部」');
+});
+$('#foldersClose').onclick=()=>$('#folders').close();
 
 function setActive(idx){
   if(lineEls[active])lineEls[active].classList.remove('on');
@@ -664,12 +746,18 @@ function onEnded(){
   next();
 }
 function next(){
-  const n=S.songs.length;if(!n)return;
-  let j=(S.cur+1)%n;
-  if(S.mode==='shuffle'&&n>1){do{j=Math.floor(Math.random()*n)}while(j===S.cur)}
+  let v=viewList();if(!v.length)v=S.songs.map((s,i)=>i);if(!v.length)return;
+  const pos=v.indexOf(S.cur);
+  let j=pos<0?v[0]:v[(pos+1)%v.length];
+  if(S.mode==='shuffle'&&v.length>1){do{j=v[Math.floor(Math.random()*v.length)]}while(j===S.cur)}
   loadSong(j,true);
 }
-function prev(){if(curTime()>3){seek(0);return}loadSong(S.cur-1,true)}
+function prev(){
+  if(curTime()>3){seek(0);return}
+  let v=viewList();if(!v.length)v=S.songs.map((s,i)=>i);if(!v.length)return;
+  const pos=v.indexOf(S.cur);
+  loadSong(pos<0?v[0]:v[(pos-1+v.length)%v.length],true);
+}
 
 window.onYouTubeIframeAPIReady=function(){
   yt=new YT.Player('yt',{width:'100%',height:'100%',playerVars:{playsinline:1,rel:0,modestbranding:1},
@@ -756,13 +844,14 @@ function openEditor(i){
   $('#fTitle').value=s.title||'';$('#fArtist').value=s.artist||'';$('#fYt').value=s.yt||'';$('#fLyrics').value=s.lyrics||'';
   $('#ytErr').hidden=true;$('#fDelete').hidden=i<0;delArm=false;$('#fDelete').textContent='刪除這首';$('#fLrc').value='';
   $('#fAudio').value='';edAudio={act:'keep',file:null};showAudioName(s.audio||null);
+  folderOptions($('#fFolder'),i>=0?s.folder:(S.view==='all'?'':S.view));
   $('#editor').showModal();
 }
 $('#edForm').addEventListener('submit',async e=>{
   e.preventDefault();
   const url=$('#fYt').value.trim();
   if(url&&!ytId(url)){$('#ytErr').hidden=false;$('#fYt').focus();return}
-  const data={title:$('#fTitle').value.trim()||'未命名',artist:$('#fArtist').value.trim(),yt:url,lyrics:$('#fLyrics').value};
+  const data={title:$('#fTitle').value.trim()||'未命名',artist:$('#fArtist').value.trim(),yt:url,lyrics:$('#fLyrics').value,folder:$('#fFolder').value};
   const sid=editIdx<0?uid():S.songs[editIdx].id;
   let audioChanged=false;
   if(edAudio.act==='set'){
@@ -1001,7 +1090,7 @@ async function ytMeta(id){
 }
 function blog(msg){const b=$('#bLog');b.hidden=false;const d=document.createElement('div');d.textContent=msg;b.appendChild(d);b.scrollTop=b.scrollHeight}
 let batchBusy=false;
-$('#btnBatch').onclick=()=>{if(!batchBusy){$('#bLog').innerHTML='';$('#bLog').hidden=true;$('#bFiles').value='';$('#bLinks').value=''}$('#batch').showModal()};
+$('#btnBatch').onclick=()=>{folderOptions($('#bFolder'),S.view==='all'?'':S.view);if(!batchBusy){$('#bLog').innerHTML='';$('#bLog').hidden=true;$('#bFiles').value='';$('#bLinks').value=''}$('#batch').showModal()};
 $('#bClose').onclick=()=>$('#batch').close();
 $('#bGo').onclick=async()=>{
   if(batchBusy)return;
@@ -1017,7 +1106,7 @@ $('#bGo').onclick=async()=>{
   for(const f of files.filter(f=>!/\.lrc$/i.test(f.name))){
     const id=uid(),meta=parseFileName(f.name);
     try{await DB.put(id,f)}catch(e){blog('✗ 存不下 '+f.name+'（裝置空間可能不夠）');continue}
-    const song={id,title:meta.title,artist:meta.artist,yt:'',lyrics:lrc[baseName(f.name).toLowerCase()]||'',audio:{name:f.name,size:f.size},dur:await audioDuration(f)};
+    const song={id,title:meta.title,artist:meta.artist,yt:'',lyrics:lrc[baseName(f.name).toLowerCase()]||'',audio:{name:f.name,size:f.size},dur:await audioDuration(f),folder:$('#bFolder').value};
     S.songs.push(song);added.push(song);save();blog('＋ '+song.title+(song.lyrics?'（已配對 .lrc）':''));
   }
   for(const line of links){
@@ -1025,7 +1114,7 @@ $('#bGo').onclick=async()=>{
     if(!id){blog('✗ 看不懂這行：'+line);continue}
     const label=line.replace(/\S*(?:youtu\.be|youtube\.com)\S*/g,'').trim();
     const meta=label?{title:label,artist:''}:(await ytMeta(id))||{title:'YouTube 影片',artist:''};
-    const song={id:uid(),title:meta.title,artist:meta.artist,yt:'https://youtu.be/'+id,lyrics:'',ytAuto:!label};
+    const song={id:uid(),title:meta.title,artist:meta.artist,yt:'https://youtu.be/'+id,lyrics:'',ytAuto:!label,folder:$('#bFolder').value};
     S.songs.push(song);added.push(song);save();blog('＋ '+song.title);
   }
   renderPlaylist();
@@ -1052,16 +1141,18 @@ $('#bGo').onclick=async()=>{
 };
 
 // ---------- backup ----------
-const backupText=()=>JSON.stringify({app:'utaloop',version:1,songs:S.songs},null,2);
+const backupText=()=>JSON.stringify({app:'utaloop',version:1,folders:S.folders,songs:S.songs},null,2);
 function importText(t){
   let data;try{data=JSON.parse(t)}catch(e){toast('看不懂這份備份，請確認是完整的備份文字');return}
   const list=Array.isArray(data)?data:data&&data.songs;
   if(!Array.isArray(list)){toast('這份資料裡沒有歌單');return}
   let added=0,updated=0;
+  if(data&&Array.isArray(data.folders))for(const f of data.folders){if(f&&f.id&&f.name&&!S.folders.some(x=>x.id===f.id))S.folders.push({id:String(f.id),name:String(f.name)})}
   for(const r of list){
     if(!r||typeof r!=='object')continue;
     const song={id:String(r.id||uid()),title:String(r.title||'未命名'),artist:String(r.artist||''),yt:String(r.yt||''),lyrics:String(r.lyrics||'')};
     if(+r.dur)song.dur=+r.dur;
+    if(r.folder&&S.folders.some(f=>f.id===String(r.folder)))song.folder=String(r.folder);
     if(r.audio&&typeof r.audio==='object')song.audio={name:String(r.audio.name||'音檔'),size:+r.audio.size||0};
     const at=S.songs.findIndex(s=>s.id===song.id);
     if(at>=0){S.songs[at]=song;updated++}else{S.songs.push(song);added++}
@@ -1142,7 +1233,7 @@ $('#plist').addEventListener('click',e=>{
   if(act==='play'){document.body.classList.remove('show-list');loadSong(i,true)}
   else if(act==='edit')openEditor(i);
   else if(act==='up'||act==='down'){
-    const j=act==='up'?i-1:i+1;if(j<0||j>=S.songs.length)return;
+    const v=viewList(),pos=v.indexOf(i),j=v[act==='up'?pos-1:pos+1];if(j===undefined)return;
     [S.songs[i],S.songs[j]]=[S.songs[j],S.songs[i]];
     if(S.cur===i)S.cur=j;else if(S.cur===j)S.cur=i;
     save();renderPlaylist();
