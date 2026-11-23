@@ -329,6 +329,7 @@ dialog::backdrop{background:rgba(8,12,24,.55)}
     <label>歌名<input id="fTitle" required autocomplete="off"></label>
     <label>歌手<input id="fArtist" autocomplete="off"></label>
     <label>YouTube 連結<input id="fYt" inputmode="url" autocomplete="off" placeholder="https://www.youtube.com/watch?v=…"></label>
+    <div class="row"><a id="fYtSearch" class="ghost" href="https://www.youtube.com/" target="_blank" rel="noopener" style="text-decoration:none;display:inline-flex;align-items:center">▶ 在 YouTube 搜尋這首</a><span class="sa" style="white-space:normal">找到影片後，複製網址貼回上面的欄位。</span></div>
     <div class="audio-field">
       <span class="lbl">音檔（選了音檔就不會用 YouTube）</span>
       <div class="row"><input type="file" id="fAudio" accept="audio/*,.mp3,.m4a,.aac,.wav,.ogg,.flac"><button type="button" id="fAudioClear" class="ghost" hidden>移除音檔</button></div>
@@ -379,6 +380,9 @@ dialog::backdrop{background:rgba(8,12,24,.55)}
     <h3>選音檔</h3>
     <p>可以一次選很多個。同名的 .lrc 歌詞檔一起選會自動配對。檔名是「歌手 - 歌名」的話會自動分開。</p>
     <input type="file" id="bFiles" multiple>
+    <h3>或貼歌名清單</h3>
+    <p>一行一首，格式是「歌名 / 歌手」（歌手可以不寫）。會先建好歌和歌詞，音樂之後再到每首的「編輯」裡補上。</p>
+    <textarea id="bNames" rows="5" spellcheck="false" placeholder="夜に駆ける / YOASOBI&#10;Lemon / 米津玄師&#10;マリーゴールド"></textarea>
     <h3>或貼 YouTube 連結</h3>
     <p>一行一個。歌名會自動抓；想自己取名，就寫在連結前面，例如「マリーゴールド https://youtu.be/…」。</p>
     <textarea id="bLinks" rows="5" spellcheck="false" placeholder="https://youtu.be/…&#10;https://www.youtube.com/watch?v=…"></textarea>
@@ -845,6 +849,7 @@ function openEditor(i){
   $('#ytErr').hidden=true;$('#fDelete').hidden=i<0;delArm=false;$('#fDelete').textContent='刪除這首';$('#fLrc').value='';
   $('#fAudio').value='';edAudio={act:'keep',file:null};showAudioName(s.audio||null);
   folderOptions($('#fFolder'),i>=0?s.folder:(S.view==='all'?'':S.view));
+  updateYtSearch();
   $('#editor').showModal();
 }
 $('#edForm').addEventListener('submit',async e=>{
@@ -872,6 +877,9 @@ $('#edForm').addEventListener('submit',async e=>{
     toast('已儲存');
   }
 });
+function updateYtSearch(){const q=[$('#fTitle').value.trim(),$('#fArtist').value.trim()].filter(Boolean).join(' ');$('#fYtSearch').href=q?'https://www.youtube.com/results?search_query='+encodeURIComponent(q):'https://www.youtube.com/'}
+['input','change'].forEach(ev=>{$('#fTitle').addEventListener(ev,updateYtSearch);$('#fArtist').addEventListener(ev,updateYtSearch)});
+$('#editor').addEventListener('click',e=>{if(e.target.closest('#fYtSearch'))updateYtSearch()},true);
 $('#fCancel').onclick=()=>$('#editor').close();
 $('#fDelete').onclick=()=>{
   if(!delArm){delArm=true;$('#fDelete').textContent='再按一次確定刪除';return}
@@ -1090,13 +1098,14 @@ async function ytMeta(id){
 }
 function blog(msg){const b=$('#bLog');b.hidden=false;const d=document.createElement('div');d.textContent=msg;b.appendChild(d);b.scrollTop=b.scrollHeight}
 let batchBusy=false;
-$('#btnBatch').onclick=()=>{folderOptions($('#bFolder'),S.view==='all'?'':S.view);if(!batchBusy){$('#bLog').innerHTML='';$('#bLog').hidden=true;$('#bFiles').value='';$('#bLinks').value=''}$('#batch').showModal()};
+$('#btnBatch').onclick=()=>{folderOptions($('#bFolder'),S.view==='all'?'':S.view);if(!batchBusy){$('#bLog').innerHTML='';$('#bLog').hidden=true;$('#bFiles').value='';$('#bLinks').value='';$('#bNames').value=''}$('#batch').showModal()};
 $('#bClose').onclick=()=>$('#batch').close();
 $('#bGo').onclick=async()=>{
   if(batchBusy)return;
   const files=[...$('#bFiles').files];
   const links=$('#bLinks').value.split('\n').map(x=>x.trim()).filter(Boolean);
-  if(!files.length&&!links.length){toast('先選音檔或貼連結');return}
+  const names=$('#bNames').value.split('\n').map(x=>x.trim()).filter(Boolean);
+  if(!files.length&&!links.length&&!names.length){toast('先選音檔、貼歌名或貼連結');return}
   batchBusy=true;$('#bGo').disabled=true;$('#bLog').innerHTML='';
   const auto=$('#bAuto').checked;
   const wasEmpty=!S.songs.length;
@@ -1116,6 +1125,13 @@ $('#bGo').onclick=async()=>{
     const meta=label?{title:label,artist:''}:(await ytMeta(id))||{title:'YouTube 影片',artist:''};
     const song={id:uid(),title:meta.title,artist:meta.artist,yt:'https://youtu.be/'+id,lyrics:'',ytAuto:!label,folder:$('#bFolder').value};
     S.songs.push(song);added.push(song);save();blog('＋ '+song.title);
+  }
+  for(const line of names){
+    const parts=line.split(/\s*[\/／|｜\t]\s*|\s+[-–—]\s+/);
+    const title=(parts[0]||'').trim(),artist=parts.slice(1).join(' ').trim();
+    if(!title)continue;
+    const song={id:uid(),title,artist,yt:'',lyrics:'',folder:$('#bFolder').value};
+    S.songs.push(song);added.push(song);save();blog('＋ '+title+(artist?'（'+artist+'）':''));
   }
   renderPlaylist();
   if(wasEmpty&&added.length)loadSong(0,false);
@@ -1137,7 +1153,7 @@ $('#bGo').onclick=async()=>{
     }
   }
   blog(`完成！加入了 ${added.length} 首。`);
-  batchBusy=false;$('#bGo').disabled=false;$('#bFiles').value='';$('#bLinks').value='';
+  batchBusy=false;$('#bGo').disabled=false;$('#bFiles').value='';$('#bLinks').value='';$('#bNames').value='';
 };
 
 // ---------- backup ----------
