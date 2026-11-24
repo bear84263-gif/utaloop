@@ -176,6 +176,15 @@ dialog::backdrop{background:rgba(8,12,24,.55)}
 /* ---- editor preview ---- */
 .preview{border:1px dashed var(--line);border-radius:10px;padding:10px 14px;font-family:var(--f-jp);font-size:24px;line-height:2;min-height:140px;max-height:320px;overflow:auto;color:var(--ink)}
 .preview .tr{font-family:var(--f-ui);font-size:15px;color:var(--muted);line-height:1.5;margin-bottom:6px}
+.preview .kb{cursor:pointer;border-radius:4px}
+.preview span.kb{text-decoration:underline dotted var(--muted);text-underline-offset:4px}
+.preview .kb:hover,.preview .kb.sel{background:var(--hi-bg)}
+.kanafix{display:flex;flex-wrap:wrap;gap:8px;align-items:center;border:1px solid var(--line);border-radius:10px;padding:10px 12px;background:var(--bg)}
+.kanafix input#kfRead{width:9em;font-family:var(--f-jp);font-size:18px}
+.kanafix b{font-family:var(--f-jp);font-size:20px}
+.kanafix label.check{width:100%}
+:root[data-skin="sea"] .kanafix{border:2px solid var(--line);background:var(--field)}
+.fixrow{display:flex;gap:10px;align-items:center;font-family:var(--f-jp)}
 .preview-lbl{font-size:14px;color:var(--muted)}
 
 /* ---- 和風奶油 skin: cream washi paper, matcha accent, persimmon highlighter ---- */
@@ -349,8 +358,16 @@ dialog::backdrop{background:rgba(8,12,24,.55)}
       <button type="button" id="fLater" class="ghost">延後 0.5 秒</button>
     </div>
     <div id="fResults" class="results" hidden></div>
-    <span class="preview-lbl">預覽（歌詞畫面會長這樣）</span>
+    <span class="preview-lbl">預覽（歌詞畫面會長這樣）· 點漢字可以改讀音，有虛線的是還沒標的字</span>
     <div id="fPreview" class="preview"></div>
+    <div id="kanaFix" class="kanafix" hidden>
+      <span>「<b id="kfBase"></b>」的讀音</span>
+      <input id="kfRead" lang="ja" autocomplete="off" aria-label="讀音（平假名）">
+      <button type="button" id="kfOne" class="primary">改這裡</button>
+      <button type="button" id="kfAll" class="ghost">這首全部改</button>
+      <button type="button" id="kfClose" class="ghost">取消</button>
+      <label class="check"><input type="checkbox" id="kfRemember" checked> 記住，以後自動標假名遇到同樣的錯也這樣改</label>
+    </div>
     <div class="row"><label for="fLrc" style="flex-direction:row;align-items:center;font-weight:400;color:var(--muted)">從 LRC 檔載入：</label><input type="file" id="fLrc"></div>
     <details class="help">
       <summary>歌詞怎麼寫？</summary>
@@ -411,6 +428,8 @@ dialog::backdrop{background:rgba(8,12,24,.55)}
     <h2>備份與匯入</h2>
     <p>歌單存在這台裝置的瀏覽器裡。清除瀏覽器資料就會不見，換裝置也不會跟過去，記得偶爾備份。</p>
     <div class="row"><button id="btnExport" class="primary" type="button">下載備份檔</button><button id="btnCopy" class="ghost" type="button">複製備份文字</button></div>
+    <h3>記住的讀音修正</h3>
+    <div id="fixList" style="display:flex;flex-direction:column;gap:6px"></div>
     <h3>匯入</h3>
     <p>匯入的歌會加到現有歌單後面，同一首會被更新。備份不包含音檔，換裝置後要在「編輯」裡重新選音檔。</p>
     <input type="file" id="fileImport" accept=".json,application/json,.txt">
@@ -449,10 +468,11 @@ const SAMPLE={id:'sample',title:'さくら さくら（範例）',artist:'日本
 
 let saved=null;
 try{saved=JSON.parse(localStorage.getItem(KEY)||'null')}catch(e){}
-const S=Object.assign({songs:[SAMPLE],cur:0,mode:'all',repeat:1,ruby:true,trans:true,size:1,smallVideo:false,skin:'simple',themeMode:'auto',folders:[],view:'all'},saved||{});
+const S=Object.assign({songs:[SAMPLE],cur:0,mode:'all',repeat:1,ruby:true,trans:true,size:1,smallVideo:false,skin:'simple',themeMode:'auto',folders:[],view:'all',kanaFix:[]},saved||{});
 if(!Array.isArray(S.songs))S.songs=[SAMPLE];
 if(!(S.cur>=0&&S.cur<S.songs.length))S.cur=0;
 if(!Array.isArray(S.folders))S.folders=[];
+if(!Array.isArray(S.kanaFix))S.kanaFix=[];
 if(S.view!=='all'&&!S.folders.some(f=>f.id===S.view))S.view='all';
 function save(){try{localStorage.setItem(KEY,JSON.stringify(S))}catch(e){}}
 
@@ -852,7 +872,7 @@ function openEditor(i){
   $('#ytErr').hidden=true;$('#fDelete').hidden=i<0;delArm=false;$('#fDelete').textContent='刪除這首';$('#fLrc').value='';
   $('#fAudio').value='';edAudio={act:'keep',file:null};showAudioName(s.audio||null);
   folderOptions($('#fFolder'),i>=0?s.folder:(S.view==='all'?'':S.view));
-  updateYtSearch();
+  updateYtSearch();closeFix();
   $('#editor').showModal();
 }
 $('#edForm').addEventListener('submit',async e=>{
@@ -969,10 +989,43 @@ async function addKana(text){
     if(/^\[[a-z]+:/i.test(ts))return line;
     if(prev!==null&&looksChinese(m[2])&&(ts===''||ts===prev))return line;
     prev=ts;
-    if(/[{《]/.test(m[2]))return line;
-    return m[1]+annotate(tok,m[2]);
+    let out='',last=0,mm;const re=annoRe();
+    while((mm=re.exec(m[2]))){out+=annotate(tok,m[2].slice(last,mm.index))+mm[0];last=mm.index+mm[0].length}
+    out+=annotate(tok,m[2].slice(last));
+    for(const f of S.kanaFix)out=replaceReading(out,f.b,f.from,f.to);
+    return m[1]+out;
   }).join('\n');
 }
+// ---------- reading fixes ----------
+function annoRe(){return new RegExp('(?:[|｜]([^|｜{《\\n]+?)|(['+KJ+']+))(?:\\{([^}\\n]*)\\}|《([^》\\n]*)》)','g')}
+function rubyPiece(text,at,b,r){
+  const needBar=!new RegExp('^['+KJ+']+$').test(b)||KANJI.test(text[at-1]||'');
+  return r?(needBar?'｜':'')+b+'{'+r+'}':b;
+}
+// Replace every b{from} (or bare b when from is '') with b{to} inside text.
+function replaceReading(text,b,from,to){
+  const e=reEsc(b);
+  if(from){
+    const re=new RegExp('[|｜]?'+e+'(?:\\{'+reEsc(from)+'\\}|《'+reEsc(from)+'》)','g');
+    return text.replace(re,(m0,off,str)=>{
+      if(!/^[|｜]/.test(m0)&&KANJI.test(str[off-1]||''))return m0; // part of a longer word
+      return rubyPiece(str,off,b,to);
+    });
+  }
+  const re=new RegExp(e,'g');
+  return text.replace(re,(m0,off,str)=>{
+    const before=str[off-1]||'',after=str[off+m0.length]||'';
+    if(KANJI.test(before)||/[|｜]/.test(before)||KANJI.test(after)||after==='{'||after==='《')return m0;
+    if(/\{[^}]*$/.test(str.slice(Math.max(0,off-20),off)))return m0; // inside a reading
+    return rubyPiece(str,off,b,to);
+  });
+}
+function renderFixList(){
+  const box=$('#fixList');
+  if(!S.kanaFix.length){box.innerHTML='<p>還沒有。在歌曲的「編輯」預覽裡點漢字改讀音時，勾「記住」就會出現在這裡。</p>';return}
+  box.innerHTML=S.kanaFix.map((f,i)=>`<div class="fixrow"><span>${esc(f.b)}：${f.from?esc(f.from):'（沒標）'} → <b>${esc(f.to)}</b></span><span class="grow"></span><button type="button" class="danger" data-fix="${i}">刪除</button></div>`).join('');
+}
+$('#fixList').addEventListener('click',e=>{const b=e.target.closest('button[data-fix]');if(!b)return;S.kanaFix.splice(+b.dataset.fix,1);save();renderFixList()});
 function shiftStamps(text,d){
   return String(text).replace(/\[(\d{1,3}):(\d{1,2}(?:[.:]\d{1,3})?)\]/g,(m,a,b)=>'['+fmtStamp(Math.max(0,+a*60+parseFloat(b.replace(':','.'))+d))+']');
 }
@@ -1117,7 +1170,7 @@ $('#fSync').onclick=async()=>{
 $('#fKana').onclick=async()=>{
   const ta=$('#fLyrics');if(!ta.value.trim()){toast('歌詞是空的');return}
   $('#fKana').disabled=true;
-  try{ta.value=await addKana(ta.value);updatePreview();toast('假名標好了（已經標過的行不會動）')}
+  try{ta.value=await addKana(ta.value);updatePreview();toast('假名標好了（已經標好的字不會動）')}
   catch(e){toast('假名字典載入失敗，請確認有網路後再試',5000)}
   $('#fKana').disabled=false;
 };
@@ -1292,13 +1345,69 @@ $('#btnEditCur').onclick=()=>{if(S.songs.length)openEditor(S.cur);else openEdito
 $('#btnAdd').onclick=()=>openEditor(-1);
 $('#btnSkin').onclick=()=>{S.skin={simple:'cream',cream:'sea',sea:'simple'}[S.skin]||'simple';save();applyView()};
 $('#btnTheme').onclick=()=>{S.themeMode={auto:'light',light:'dark',dark:'auto'}[S.themeMode]||'auto';save();applyView()};
-function updatePreview(){
-  const ls=parseLyrics($('#fLyrics').value).slice(0,6);
-  $('#fPreview').innerHTML=ls.length?ls.map(l=>`<div>${l.jp?ruby(l.jp):'♪'}</div>`+(l.tr?`<div class="tr">${esc(l.tr)}</div>`:'')).join(''):'<span class="preview-lbl">貼上歌詞後會顯示在這裡</span>';
+function bareHtml(seg,at){
+  let o='',l=0,k;const re=new RegExp('['+KJ+']+','g');
+  while((k=re.exec(seg))){o+=esc(seg.slice(l,k.index))+`<span class="kb" data-s="${at+k.index}" data-e="${at+k.index+k[0].length}" data-b="${esc(k[0])}" data-r="">${esc(k[0])}</span>`;l=k.index+k[0].length}
+  return o+esc(seg.slice(l));
 }
+function updatePreview(){
+  const text=$('#fLyrics').value;
+  let off=0,html='',prev=null;
+  for(const line of text.split('\n')){
+    const ls=off;off+=line.length+1;
+    if(!line.trim())continue;
+    if(/^\s*[>＞]/.test(line)){html+=`<div class="tr">${esc(line.replace(/^\s*[>＞]\s*/,''))}</div>`;continue}
+    const m=line.match(/^(\s*(?:\[[^\]]*\]\s*)*)(.*)$/);const ts=m[1].trim();
+    if(/^\[[a-z]+:/i.test(ts))continue;
+    const body=m[2],at=ls+m[1].length;
+    if(prev!==null&&looksChinese(body)&&(ts===''||ts===prev)){html+=`<div class="tr">${esc(body)}</div>`;continue}
+    prev=ts;
+    let out='',last=0,mm;const re=annoRe();
+    while((mm=re.exec(body))){
+      out+=bareHtml(body.slice(last,mm.index),at+last);
+      const b=mm[1]||mm[2],r=mm[3]!==undefined?mm[3]:mm[4];
+      out+=`<ruby class="kb" data-s="${at+mm.index}" data-e="${at+mm.index+mm[0].length}" data-b="${esc(b)}" data-r="${esc(r)}">${esc(b)}<rt>${esc(r)}</rt></ruby>`;
+      last=mm.index+mm[0].length;
+    }
+    out+=bareHtml(body.slice(last),at+last);
+    html+=`<div>${out||'♪'}</div>`;
+  }
+  $('#fPreview').innerHTML=html||'<span class="preview-lbl">貼上歌詞後會顯示在這裡</span>';
+  if(kf&&!$('#kanaFix').hidden){const el=[...$('#fPreview').querySelectorAll('.kb')].find(x=>+x.dataset.s===kf.s);if(el)el.classList.add('sel');else closeFix()}
+}
+let kf=null;
+function closeFix(){kf=null;$('#kanaFix').hidden=true;$('#fPreview').querySelectorAll('.sel').forEach(x=>x.classList.remove('sel'))}
+$('#fPreview').addEventListener('click',e=>{
+  const el=e.target.closest('.kb');if(!el)return;
+  $('#fPreview').querySelectorAll('.sel').forEach(x=>x.classList.remove('sel'));el.classList.add('sel');
+  kf={s:+el.dataset.s,e:+el.dataset.e,b:el.dataset.b,r:el.dataset.r};
+  $('#kfBase').textContent=kf.b;$('#kfRead').value=kf.r;$('#kanaFix').hidden=false;$('#kfRead').focus();
+});
+function applyFix(all){
+  if(!kf)return;
+  const to=toHira($('#kfRead').value.trim().replace(/[{}《》|｜]/g,''));
+  const ta=$('#fLyrics');let text=ta.value;
+  if(all){
+    text=replaceReading(text,kf.b,kf.r,to);
+  }else{
+    if(text.slice(kf.s,kf.e).indexOf(kf.b)<0){closeFix();updatePreview();return}
+    text=text.slice(0,kf.s)+rubyPiece(text,kf.s,kf.b,to)+text.slice(kf.e);
+  }
+  ta.value=text;
+  if($('#kfRemember').checked&&to&&to!==kf.r){
+    S.kanaFix=S.kanaFix.filter(f=>!(f.b===kf.b&&f.from===kf.r));
+    S.kanaFix.push({b:kf.b,from:kf.r,to});save();
+  }
+  toast(all?'這首裡的「'+kf.b+'」都改好了，記得按「儲存」':'改好了，記得按「儲存」');
+  closeFix();updatePreview();
+}
+$('#kfOne').onclick=()=>applyFix(false);
+$('#kfAll').onclick=()=>applyFix(true);
+$('#kfClose').onclick=closeFix;
+$('#kfRead').addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();applyFix(false)}});
 $('#fLyrics').addEventListener('input',updatePreview);
 new MutationObserver(()=>{if($('#editor').open)updatePreview()}).observe($('#editor'),{attributes:true,attributeFilter:['open']});
-$('#btnSettings').onclick=()=>{$('#pasteImport').value='';$('#settings').showModal()};
+$('#btnSettings').onclick=()=>{$('#pasteImport').value='';renderFixList();$('#settings').showModal()};
 $('#btnList').onclick=()=>{document.body.classList.toggle('show-list');renderPlaylist()};
 $('#tkStamp').onclick=stamp;
 $('#tkBack').onclick=stampBack;
