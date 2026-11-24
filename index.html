@@ -210,6 +210,12 @@ dialog::backdrop{background:rgba(8,12,24,.55)}
 .kanafix b{font-family:var(--f-jp);font-size:20px}
 .kanafix label.check{width:100%}
 :root[data-skin="sea"] .kanafix{border:2px solid var(--line);background:var(--field)}
+.sync-box{border:1px solid var(--line);border-radius:12px;padding:12px 14px;display:flex;flex-direction:column;gap:10px;background:var(--bg)}
+.sync-box h3{margin:0}
+.sync-status{color:var(--ink)!important;font-weight:500}
+.sync-steps{margin:0;padding-left:22px;line-height:1.8;color:var(--muted)}
+.sync-steps a{color:var(--accent);font-weight:700}
+:root[data-skin="sea"] .sync-box{border:2px solid var(--line);background:var(--field)}
 .fixrow{display:flex;gap:10px;align-items:center;font-family:var(--f-jp)}
 .preview-lbl{font-size:14px;color:var(--muted)}
 
@@ -456,8 +462,23 @@ dialog::backdrop{background:rgba(8,12,24,.55)}
 
 <dialog id="settings">
   <div class="dlg">
-    <h2>備份與匯入</h2>
-    <p>歌單存在這台裝置的瀏覽器裡。清除瀏覽器資料就會不見，換裝置也不會跟過去，記得偶爾備份。</p>
+    <h2>雲端同步與備份</h2>
+    <section class="sync-box">
+      <h3>☁️ 雲端同步</h3>
+      <p id="syncStatus" class="sync-status">還沒開啟。開啟後，每台裝置的歌單會自動保持一樣（音檔除外）。</p>
+      <div id="syncSetup">
+        <ol class="sync-steps">
+          <li>打開 <a href="https://github.com/settings/tokens/new?scopes=gist&amp;description=utaloop" target="_blank" rel="noopener">GitHub 建立金鑰頁面</a>（已經幫你勾好「gist」）。</li>
+          <li>「Expiration」選 <b>No expiration</b>（不過期），拉到最下面按「Generate token」。</li>
+          <li>複製出現的那串字（ghp_ 開頭），貼到下面，按「開啟同步」。</li>
+        </ol>
+        <p>每台裝置都要做一次。可以每台各建一把金鑰，或把同一把存在記事本裡重複使用（GitHub 只會顯示一次）。</p>
+        <div class="frow"><input id="syncToken" type="password" autocomplete="off" spellcheck="false" placeholder="ghp_…" aria-label="GitHub 金鑰"><button id="syncConnect" class="primary" type="button">開啟同步</button></div>
+      </div>
+      <div id="syncOn" class="row" hidden><button id="syncNow" class="ghost" type="button">立即同步</button><button id="syncOff" class="danger" type="button">關閉同步</button></div>
+    </section>
+    <h3>手動備份</h3>
+    <p>歌單存在這台裝置的瀏覽器裡。沒開雲端同步的話，清除瀏覽器資料就會不見，換裝置也不會跟過去。</p>
     <div class="row"><button id="btnExport" class="primary" type="button">下載備份檔</button><button id="btnCopy" class="ghost" type="button">複製備份文字</button></div>
     <h3>記住的讀音修正</h3>
     <div id="fixList" style="display:flex;flex-direction:column;gap:6px"></div>
@@ -505,7 +526,8 @@ if(!(S.cur>=0&&S.cur<S.songs.length))S.cur=0;
 if(!Array.isArray(S.folders))S.folders=[];
 if(!Array.isArray(S.kanaFix))S.kanaFix=[];
 if(S.view!=='all'&&!S.folders.some(f=>f.id===S.view))S.view='all';
-function save(){try{localStorage.setItem(KEY,JSON.stringify(S))}catch(e){}}
+let afterSave=null;
+function save(){try{localStorage.setItem(KEY,JSON.stringify(S))}catch(e){}if(afterSave)afterSave()}
 
 // ---------- audio files (IndexedDB) ----------
 const DB={p:null,
@@ -1464,7 +1486,7 @@ $('#kfClose').onclick=closeFix;
 $('#kfRead').addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();applyFix(false)}});
 $('#fLyrics').addEventListener('input',updatePreview);
 new MutationObserver(()=>{if($('#editor').open)updatePreview()}).observe($('#editor'),{attributes:true,attributeFilter:['open']});
-$('#btnSettings').onclick=()=>{$('#pasteImport').value='';renderFixList();$('#settings').showModal()};
+$('#btnSettings').onclick=()=>{$('#pasteImport').value='';renderFixList();renderSync();$('#settings').showModal()};
 $('#btnList').onclick=()=>{document.body.classList.toggle('show-list');renderPlaylist()};
 $('#tkStamp').onclick=stamp;
 $('#tkBack').onclick=stampBack;
@@ -1503,8 +1525,137 @@ document.addEventListener('keydown',e=>{
 });
 
 if((S.kanaRepair||0)<1){S.songs.forEach(x=>{x.lyrics=repairOld(x.lyrics)});S.kanaRepair=1;save()}
+// ---------- cloud sync (secret GitHub Gist) ----------
+const SYNC_KEY='utaloop-sync',SYNC_FILE='utaloop-sync.json';
+let sync={};try{sync=JSON.parse(localStorage.getItem(SYNC_KEY)||'{}')||{}}catch(e){}
+function saveSyncCfg(){try{localStorage.setItem(SYNC_KEY,JSON.stringify(sync))}catch(e){}}
+if(!S.tomb||typeof S.tomb!=='object')S.tomb={};
+const COLLS={songs:x=>x.id,folders:x=>x.id,kanaFix:x=>x.b+'|'+x.from};
+const sig=x=>{const c=Object.assign({},x);delete c.upd;return JSON.stringify(c)};
+let snap={};
+function takeSnap(){snap={};for(const c in COLLS){snap[c]=new Map();for(const it of S[c]||[])snap[c].set(COLLS[c](it),sig(it))}}
+// Stamp edited/new items and record deletions, so devices can merge changes.
+function markChanges(){
+  const now=Date.now();let changed=false;
+  for(const c in COLLS){
+    const key=COLLS[c],old=snap[c]||new Map(),seen=new Set(),t=S.tomb[c]||(S.tomb[c]={});
+    for(const it of S[c]||[]){const k=key(it);seen.add(k);const g=sig(it);if(old.get(k)!==g){it.upd=now;delete t[k];changed=true}}
+    for(const k of old.keys())if(!seen.has(k)){t[k]=now;changed=true}
+  }
+  if(changed){takeSnap();try{localStorage.setItem(KEY,JSON.stringify(S))}catch(e){}}
+  return changed;
+}
+function mergeColl(c,local,remote,tl,tr){
+  const key=COLLS[c],tomb=Object.assign({},tr||{});
+  for(const k in tl||{})tomb[k]=Math.max(tomb[k]||0,tl[k]);
+  const map=new Map();
+  for(const it of remote||[])map.set(key(it),it);
+  for(const it of local||[]){const k=key(it),r=map.get(k);if(!r||(it.upd||0)>=(r.upd||0))map.set(k,it)}
+  const out=[],seen=new Set();
+  for(const it of [...(local||[]),...(remote||[])]){const k=key(it);if(seen.has(k))continue;seen.add(k);const v=map.get(k);if(!(tomb[k]>=(v.upd||0)))out.push(v)}
+  const cutoff=Date.now()-180*864e5;for(const k in tomb)if(tomb[k]<cutoff)delete tomb[k];
+  return {items:out,tomb};
+}
+const payload=()=>JSON.stringify({app:'utaloop',v:1,songs:S.songs,folders:S.folders,kanaFix:S.kanaFix,tomb:S.tomb});
+async function gh(path,opt){
+  const r=await fetch('https://api.github.com'+path,Object.assign({},opt,{headers:Object.assign({'Accept':'application/vnd.github+json','Authorization':'Bearer '+sync.token},opt&&opt.body?{'Content-Type':'application/json'}:{})}));
+  if(r.status===401||r.status===403){const e=new Error('auth');e.status=r.status;throw e}
+  if(r.status===404){const e=new Error('missing');e.status=404;throw e}
+  if(!r.ok)throw new Error('http '+r.status);
+  return r.json();
+}
+async function findGist(){
+  for(let page=1;page<=5;page++){
+    const list=await gh('/gists?per_page=100&page='+page);
+    const g=list.find(x=>x.files&&x.files[SYNC_FILE]);
+    if(g)return g.id;
+    if(list.length<100)break;
+  }
+  return null;
+}
+async function pullRemote(){
+  if(!sync.gistId)sync.gistId=await findGist();
+  if(!sync.gistId)return null;
+  let g;
+  try{g=await gh('/gists/'+sync.gistId)}catch(e){if(e.status===404){sync.gistId=null;return pullRemote()}throw e}
+  const f=g.files&&g.files[SYNC_FILE];if(!f)return null;
+  let text=f.content;
+  if(f.truncated){const r=await fetch(f.raw_url);text=await r.text()}
+  try{return {text,data:JSON.parse(text)}}catch(e){return null}
+}
+let syncing=false,syncAgain=false,syncTimer=null,syncErr='';
+const anyDialogOpen=()=>[...document.querySelectorAll('dialog')].some(d=>d.open&&d.id!=='settings');
+async function syncNow(manual){
+  if(!sync.token)return;
+  if(syncing){syncAgain=true;return}
+  if(!manual&&(anyDialogOpen()||timing)){scheduleSync(5000);return}
+  syncing=true;syncErr='';renderSync('同步中…');
+  try{
+    markChanges();
+    const remote=await pullRemote();
+    const curId=S.songs[S.cur]&&S.songs[S.cur].id;
+    if(remote&&remote.data){
+      const before=JSON.stringify([S.songs,S.folders,S.kanaFix]);
+      for(const c in COLLS){const m=mergeColl(c,S[c],remote.data[c],S.tomb[c],(remote.data.tomb||{})[c]);S[c]=m.items;S.tomb[c]=m.tomb}
+      takeSnap();
+      if(JSON.stringify([S.songs,S.folders,S.kanaFix])!==before){
+        if(S.view!=='all'&&!S.folders.some(f=>f.id===S.view))S.view='all';
+        const ni=S.songs.findIndex(x=>x.id===curId);
+        try{localStorage.setItem(KEY,JSON.stringify(S))}catch(e){}
+        if(ni>=0&&ni!==S.cur){S.cur=ni}
+        if(ni<0&&S.songs.length)loadSong(0,false);else{renderPlaylist();renderNow();if(!isPlaying())renderLyrics()}
+      }
+    }
+    const body=payload();
+    if(!remote||remote.text!==body){
+      const files={[SYNC_FILE]:{content:body}};
+      if(sync.gistId)await gh('/gists/'+sync.gistId,{method:'PATCH',body:JSON.stringify({files})});
+      else{const g=await gh('/gists',{method:'POST',body:JSON.stringify({description:'うたループ 歌單同步（請勿刪除）',public:false,files})});sync.gistId=g.id}
+    }
+    sync.last=Date.now();saveSyncCfg();
+  }catch(e){
+    syncErr=e.message==='auth'?'金鑰無效、過期，或沒有勾「gist」權限。請關閉同步後重新貼一把。':'同步失敗（可能沒有網路），等一下會自動再試。';
+    if(e.message!=='auth')scheduleSync(60000);
+  }
+  syncing=false;renderSync();
+  if(syncAgain){syncAgain=false;scheduleSync(1500)}
+}
+function scheduleSync(ms){if(!sync.token)return;clearTimeout(syncTimer);syncTimer=setTimeout(()=>syncNow(false),ms||3000)}
+function renderSync(msg){
+  const on=!!sync.token;
+  $('#syncSetup').hidden=on;$('#syncOn').hidden=!on;
+  $('#btnSettings').textContent=on?'☁️ 同步':'備份';
+  let t;
+  if(msg)t=msg;
+  else if(!on)t='還沒開啟。開啟後，每台裝置的歌單會自動保持一樣（音檔除外）。';
+  else if(syncErr)t='⚠️ '+syncErr;
+  else if(sync.last){const d=new Date(sync.last);t='✓ 已開啟，上次同步 '+d.toLocaleDateString('zh-TW')+' '+d.toLocaleTimeString('zh-TW',{hour:'2-digit',minute:'2-digit'})+'。之後新增或修改都會自動同步。'}
+  else t='已開啟，準備同步…';
+  $('#syncStatus').textContent=t;
+}
+$('#syncConnect').onclick=async()=>{
+  const tok=$('#syncToken').value.trim();
+  if(!/^(ghp_|github_pat_|gho_)/.test(tok)){$('#syncStatus').textContent='這看起來不像 GitHub 金鑰，應該是 ghp_ 開頭的一長串字。';return}
+  sync={token:tok};saveSyncCfg();$('#syncToken').value='';
+  await syncNow(true);
+  if(!syncErr)toast('雲端同步已開啟');
+};
+$('#syncNow').onclick=()=>syncNow(true);
+$('#syncOff').onclick=()=>{
+  const b=$('#syncOff');
+  if(b.dataset.armed!=='1'){b.dataset.armed='1';b.textContent='確定關閉？';return}
+  b.dataset.armed='';b.textContent='關閉同步';
+  sync={};saveSyncCfg();renderSync();toast('已關閉同步。這台的歌單還在，雲端的資料也還在。');
+};
+takeSnap();
+afterSave=()=>{if(sync.token&&markChanges())scheduleSync(3000)};
+document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible')scheduleSync(500)});
+setInterval(()=>{if(document.visibilityState==='visible')syncNow(false)},120000);
+renderSync();
+
 applyView();
 loadSong(S.cur,false);
+if(sync.token)scheduleSync(800);
 })();
 </script>
 </body>
