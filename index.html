@@ -969,6 +969,27 @@ function tokenRuby(surface,reading,prevKanji){
   let g=1;
   return parts.map((p,i)=>KANJI.test(p)?((i===0&&prevKanji)?'｜':'')+p+'{'+m[g++]+'}':p).join('');
 }
+// Words the dictionary reads wrongly in song lyrics: [surface, annotated, required next text]
+const LYRIC_WORDS=[
+  ['二十歳','二十歳{はたち}'],['一人','一人{ひとり}'],['二人','二人{ふたり}'],['一日','一日{いちにち}'],['二日','二日{ふつか}'],['三日','三日{みっか}'],
+  ['一歩','一歩{いっぽ}'],['一回','一回{いっかい}'],['一杯','一杯{いっぱい}'],['一本','一本{いっぽん}'],['一晩','一晩{ひとばん}'],['一粒','一粒{ひとつぶ}'],
+  ['一途','一途{いちず}'],['一目','一目{ひとめ}'],['貴女','貴女{あなた}'],['彷徨','彷徨{さまよ}',/^[わいうえっ]/],['其処','其処{そこ}'],
+  ['木の下','木{き}の下{した}'],['側','側{そば}',/^[にでへ]/],['傍','傍{そば}',/^[にでへ]/]
+].sort((a,b)=>b[0].length-a[0].length);
+function annotateLyric(tok,text){
+  let out='',last=0;
+  for(let i=0;i<text.length;){
+    const hit=LYRIC_WORDS.find(([w,,next])=>text.startsWith(w,i)&&!KANJI.test(text[i-1]||'')&&!KANJI.test(text[i+w.length]||'')&&(!next||next.test(text.slice(i+w.length))));
+    if(hit){out+=annotate(tok,text.slice(last,i))+hit[1];i+=hit[0].length;last=i}else i++;
+  }
+  return out+annotate(tok,text.slice(last));
+}
+// Repairs readings saved by earlier versions (e.g. 二{に}人{にん} → 二人{ふたり}).
+const OLD_BAD=[['一{いち}人{にん}','一人{ひとり}'],['二{に}人{にん}','二人{ふたり}'],['一{いち}歩{ほ}','一歩{いっぽ}'],['一{いち}日{にち}','一日{いちにち}'],
+  ['一{いち}回{かい}','一回{いっかい}'],['一{いち}杯{はい}','一杯{いっぱい}'],['一{いち}本{ほん}','一本{いっぽん}'],['三{さん}日{にち}','三日{みっか}'],['二{に}日{にち}','二日{ふつか}'],
+  ['一{いち}晩{ばん}','一晩{ひとばん}'],['一{いち}粒{つぶ}','一粒{ひとつぶ}'],['二{に}十{じゅう}歳{さい}','二十歳{はたち}'],['一途{いっと}','一途{いちず}'],['一目{いちもく}','一目{ひとめ}'],
+  ['貴女{きじょ}','貴女{あなた}'],['彷徨{ほうこう}う','彷徨{さまよ}う'],['側{がわ}に','側{そば}に'],['傍{はた}に','傍{そば}に'],['木の下{このした}','木{き}の下{した}']];
+function repairOld(text){let t=String(text||'');for(const [a,b] of OLD_BAD)t=t.split(a).join(b);return t}
 function annotate(tok,text){
   let out='',prev=false;
   for(const k of tok.tokenize(text)){
@@ -977,7 +998,7 @@ function annotate(tok,text){
   }
   return out;
 }
-async function addKana(text){
+async function addKana(text,fresh){
   if(!tokP&&!window.__kanaWarned){window.__kanaWarned=true;toast('第一次使用要下載假名字典（約 18 MB），請稍等…',6000)}
   const tok=await getTokenizer();
   let prev=null; // timestamp prefix of the last lyric line, so Chinese lines under it are left alone
@@ -990,8 +1011,9 @@ async function addKana(text){
     if(prev!==null&&looksChinese(m[2])&&(ts===''||ts===prev))return line;
     prev=ts;
     let out='',last=0,mm;const re=annoRe();
-    while((mm=re.exec(m[2]))){out+=annotate(tok,m[2].slice(last,mm.index))+mm[0];last=mm.index+mm[0].length}
-    out+=annotate(tok,m[2].slice(last));
+    const body=fresh?m[2].replace(/\{[^}\n]*\}|《[^》\n]*》|[|｜]/g,''):m[2];
+    while((mm=re.exec(body))){out+=annotateLyric(tok,body.slice(last,mm.index))+mm[0];last=mm.index+mm[0].length}
+    out+=annotateLyric(tok,body.slice(last));
     for(const f of S.kanaFix)out=replaceReading(out,f.b,f.from,f.to);
     return m[1]+out;
   }).join('\n');
@@ -1170,7 +1192,7 @@ $('#fSync').onclick=async()=>{
 $('#fKana').onclick=async()=>{
   const ta=$('#fLyrics');if(!ta.value.trim()){toast('歌詞是空的');return}
   $('#fKana').disabled=true;
-  try{ta.value=await addKana(ta.value);updatePreview();toast('假名標好了（已經標好的字不會動）')}
+  try{ta.value=await addKana(ta.value,true);updatePreview();toast('假名重新標好了，你記住的讀音修正也套用了。記得按「儲存」')}
   catch(e){toast('假名字典載入失敗，請確認有網路後再試',5000)}
   $('#fKana').disabled=false;
 };
@@ -1445,6 +1467,7 @@ document.addEventListener('keydown',e=>{
   else if(e.code==='ArrowLeft')prev();
 });
 
+if((S.kanaRepair||0)<1){S.songs.forEach(x=>{x.lyrics=repairOld(x.lyrics)});S.kanaRepair=1;save()}
 applyView();
 loadSong(S.cur,false);
 })();
