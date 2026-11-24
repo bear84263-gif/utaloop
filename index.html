@@ -83,10 +83,24 @@ body.small-video .player:not([data-kind="clock"]){max-height:120px}
 .dlg select{border:1px solid var(--line);border-radius:10px;padding:10px 12px;background:var(--bg);color:var(--ink);font-size:16px}
 :root[data-skin="sea"] .dlg select{border:2px solid var(--line);background:var(--field)}
 .playlist h2{margin:0;padding:12px 14px 6px;font-size:14px;letter-spacing:.08em;color:var(--muted);font-weight:500}
-#plist{list-style:none;margin:0;padding:4px 6px 8px;overflow:auto;min-height:0;flex:1}
+/* control card: title, progress, buttons together */
+.ctrl{display:flex;flex-direction:column;gap:8px}
+.rl2{display:none}
+.ctrl-row{display:flex;flex-wrap:wrap;gap:10px;align-items:center;justify-content:center}
+.pl-search{flex:none}
+.playlist{position:relative}
+.playlist h2{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+.folder-bar{padding:10px 10px 0;border-bottom:none}
+:root[data-skin="sea"] .folder-bar{border-bottom:none}
+.pl-search{margin:8px 10px;}
+#plist{border-top:1px solid var(--line)}
+:root[data-skin="sea"] #plist{border-top:2px dashed var(--line)}
+#plist{list-style:none;margin:0;padding:4px 6px 8px;overflow-y:auto;min-height:0;flex:1;overscroll-behavior:contain}
+.pl-search{margin:8px 10px 0;padding:8px 12px;border:1px solid var(--line);border-radius:999px;background:var(--bg);color:var(--ink);font-size:15px;min-width:0}
+:root[data-skin="sea"] .pl-search{border:2px solid var(--line);border-radius:10px;background:var(--field)}
 .song{display:flex;align-items:center;gap:4px;border-radius:10px}
 .song.cur{background:var(--hi-bg)}
-.song-main{flex:1;min-width:0;display:flex;align-items:center;gap:12px;border:none;background:none;text-align:left;padding:12px 8px}
+.song-main{flex:1;min-width:0;display:flex;align-items:center;gap:12px;border:none;background:none;text-align:left;padding:10px 8px}
 .num{width:24px;flex:none;text-align:center;color:var(--muted);font-variant-numeric:tabular-nums}
 .song.cur .num{color:var(--hi);font-weight:700}
 .meta{display:flex;flex-direction:column;min-width:0}
@@ -167,7 +181,19 @@ dialog::backdrop{background:rgba(8,12,24,.55)}
   .body{flex-direction:row;gap:16px}
   .side{width:clamp(320px,32vw,420px);flex:none;overflow-y:auto;overscroll-behavior:contain;padding-bottom:2px}
   .player{max-height:none}
-  .playlist{display:flex;flex:1 0 auto;min-height:min(340px,60vh)}
+  .playlist{display:flex;flex:1 1 0;min-height:240px}
+  .player{max-height:26vh}
+  .ctrl{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:10px 12px}
+  .ctrl-row{justify-content:space-between;gap:8px}
+  .ctrl .transport{gap:10px}
+  .ctrl .transport button{width:42px;height:42px;font-size:17px}
+  .ctrl .transport .play{width:52px;height:52px;font-size:22px}
+  .ctrl .loopopts{gap:6px}
+  .ctrl .loopopts .chip{min-height:40px;padding:6px 10px;font-size:15px}
+  .ctrl .mlbl,.ctrl .rl1{display:none}
+  .ctrl .rl2{display:inline}
+  .ctrl-row{flex-wrap:nowrap}
+  .side>*:not(.playlist){flex:none}
   .transport button{width:48px;height:48px}
   .transport .play{width:60px;height:60px}
 }
@@ -251,7 +277,7 @@ dialog::backdrop{background:rgba(8,12,24,.55)}
 :root[data-skin="sea"] .transport button{border:2.5px solid var(--line);background:var(--panel);color:var(--ink)}
 :root[data-skin="sea"] .transport .play{background:var(--accent);color:var(--accent-ink)}
 :root[data-skin="sea"] .now-title{font-family:var(--f-jp)}
-:root[data-skin="sea"] .now,:root[data-skin="sea"] .seekrow{background:var(--panel);border:2px solid var(--line);border-radius:12px;padding:8px 12px}
+:root[data-skin="sea"] .ctrl{border:2.5px solid var(--line);border-radius:14px}
 :root[data-skin="sea"] .line{border-radius:8px}
 :root[data-skin="sea"] .line.on{background:var(--hi-bg);color:var(--ink)}
 :root[data-skin="sea"] .line.on .jp{color:var(--ink);font-weight:700}
@@ -287,21 +313,26 @@ dialog::backdrop{background:rgba(8,12,24,.55)}
         <audio id="audio" preload="auto" playsinline></audio>
         <div class="ytblocked" id="ytBlocked" hidden><div>YouTube 在這裡載入不了。<br>請把網頁放到網站空間（例如 GitHub Pages）再打開。</div></div>
       </div>
-      <div class="now"><div class="now-title" id="nowTitle"></div><div class="now-artist" id="nowArtist"></div></div>
-      <div class="seekrow"><span id="tcur">0:00</span><input id="seek" type="range" min="0" max="1" step="0.1" value="0" aria-label="播放進度"><span id="tdur">--:--</span></div>
-      <div class="transport">
-        <button id="btnPrev" type="button" aria-label="上一首">⏮</button>
-        <button id="btnPlay" class="play" type="button" aria-label="播放">▶</button>
-        <button id="btnNext" type="button" aria-label="下一首">⏭</button>
-      </div>
-      <div class="loopopts">
-        <button id="btnMode" class="chip" type="button"></button>
-        <label class="chip" for="selRepeat">每首播
-          <select id="selRepeat"><option value="1">1</option><option value="2">2</option><option value="3">3</option><option value="5">5</option></select> 次</label>
+      <div class="ctrl">
+        <div class="now"><div class="now-title" id="nowTitle"></div><div class="now-artist" id="nowArtist"></div></div>
+        <div class="seekrow"><span id="tcur">0:00</span><input id="seek" type="range" min="0" max="1" step="0.1" value="0" aria-label="播放進度"><span id="tdur">--:--</span></div>
+        <div class="ctrl-row">
+          <div class="transport">
+            <button id="btnPrev" type="button" aria-label="上一首">⏮</button>
+            <button id="btnPlay" class="play" type="button" aria-label="播放">▶</button>
+            <button id="btnNext" type="button" aria-label="下一首">⏭</button>
+          </div>
+          <div class="loopopts">
+            <button id="btnMode" class="chip" type="button"></button>
+            <label class="chip" for="selRepeat" title="每首重複幾次"><span class="rl1">每首</span><span class="rl2" aria-hidden="true">×</span>
+              <select id="selRepeat" aria-label="每首重複幾次"><option value="1">1</option><option value="2">2</option><option value="3">3</option><option value="5">5</option></select><span class="rl1">次</span></label>
+          </div>
+        </div>
       </div>
       <section class="playlist" aria-label="歌單">
         <h2 id="plHead">歌單 · <span id="plCount">0</span> 首</h2>
         <div id="folderBar" class="folder-bar" role="group" aria-label="資料夾"></div>
+        <input id="plSearch" class="pl-search" type="search" placeholder="🔍 搜尋歌名或歌手" autocomplete="off" aria-label="搜尋歌單">
         <ol id="plist"></ol>
       </section>
     </aside>
@@ -557,7 +588,8 @@ function applyView(){
   $('#tgVideo').setAttribute('aria-pressed',S.smallVideo);
   document.body.classList.toggle('small-video',S.smallVideo);
   document.documentElement.style.setProperty('--scale',S.size);
-  $('#btnMode').textContent={all:'🔁 清單循環',one:'🔂 單曲循環',shuffle:'🔀 隨機播放'}[S.mode];
+  const md={all:['🔁','清單循環'],one:['🔂','單曲循環'],shuffle:['🔀','隨機播放']}[S.mode];
+  $('#btnMode').innerHTML=`<span aria-hidden="true">${md[0]}</span><span class="mlbl"> ${md[1]}</span>`;$('#btnMode').title=md[1];$('#btnMode').setAttribute('aria-label','播放模式：'+md[1]);
   $('#selRepeat').value=String(S.repeat);
   $('#selRepeat').disabled=S.mode==='one';
 }
@@ -599,11 +631,13 @@ function renderFolderBar(){
 }
 function renderPlaylist(){
   const ul=$('#plist');ul.innerHTML='';
-  const v=viewList();
-  $('#plCount').textContent=v.length;
+  const q=($('#plSearch').value||'').trim().toLowerCase();
+  const all=viewList(),v=q?all.filter(i=>((S.songs[i].title||'')+' '+(S.songs[i].artist||'')).toLowerCase().includes(q)):all;
+  $('#plCount').textContent=all.length;
   $('#plHead').firstChild.textContent=(S.view==='all'?'歌單':folderName(S.view))+' · ';
-  $('#btnList').textContent=document.body.classList.contains('show-list')?'看歌詞':`歌單 (${v.length})`;
+  $('#btnList').textContent=document.body.classList.contains('show-list')?'看歌詞':`歌單 (${all.length})`;
   renderFolderBar();
+  if(!v.length&&q){ul.innerHTML='<li class="sa" style="padding:14px 10px;white-space:normal">找不到符合「'+esc(q)+'」的歌。</li>';return}
   if(!v.length){ul.innerHTML='<li class="sa" style="padding:14px 10px;white-space:normal">這個資料夾還沒有歌。新增歌曲時選這個資料夾，或在歌的「編輯」裡改資料夾。</li>';return}
   v.forEach((i,pos)=>{
     const s=S.songs[i];
@@ -614,6 +648,7 @@ function renderPlaylist(){
     ul.appendChild(li);
   });
 }
+$('#plSearch').addEventListener('input',()=>renderPlaylist());
 $('#folderBar').addEventListener('click',e=>{
   const b=e.target.closest('button[data-view]');if(!b)return;
   if(b.dataset.view==='__manage'){openFolders();return}
@@ -1355,7 +1390,7 @@ $('#btnFull').onclick=()=>{
 $('#btnPlay').onclick=()=>{if(!S.songs.length){openEditor(-1);return}isPlaying()?pause():play()};
 $('#btnNext').onclick=()=>next();
 $('#btnPrev').onclick=()=>prev();
-$('#btnMode').onclick=()=>{S.mode={all:'one',one:'shuffle',shuffle:'all'}[S.mode];save();applyView()};
+$('#btnMode').onclick=()=>{S.mode={all:'one',one:'shuffle',shuffle:'all'}[S.mode];save();applyView();toast({all:'🔁 清單循環：整個歌單播完再從頭',one:'🔂 單曲循環：一直重複這首',shuffle:'🔀 隨機播放'}[S.mode])};
 $('#selRepeat').onchange=e=>{S.repeat=+e.target.value||1;playCount=0;save()};
 $('#tgRuby').onclick=()=>{S.ruby=!S.ruby;save();applyView()};
 $('#tgTrans').onclick=()=>{S.trans=!S.trans;save();applyView()};
