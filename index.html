@@ -343,6 +343,7 @@ dialog::backdrop{background:rgba(8,12,24,.55)}
       <button type="button" id="fFind" class="ghost">🔍 自動找歌詞</button>
       <button type="button" id="fKana" class="ghost">あ 自動標假名</button>
       <button type="button" id="fSync" class="ghost">⏱ 自動套用時間</button>
+      <button type="button" id="fTrans" class="ghost">🌐 自動翻譯</button>
       <span class="grow"></span>
       <button type="button" id="fEarlier" class="ghost">整首提早 0.5 秒</button>
       <button type="button" id="fLater" class="ghost">延後 0.5 秒</button>
@@ -358,6 +359,7 @@ dialog::backdrop{background:rgba(8,12,24,.55)}
         <li>漢字後面用大括號標假名：<code>夜{よる}の街{まち}</code>。</li>
         <li>要把假名標在一整段上（例如含平假名的詞），前面加直線：<code>｜明日{あした}</code>。</li>
         <li>中文翻譯寫在日文的下一行。可以用 <code>&gt;</code> 開頭，不加也行：沒有假名的行會自動當成翻譯。</li>
+        <li>沒有中文翻譯的話，按「🌐 自動翻譯」用機器翻譯補上（每天有免費額度）。</li>
         <li>貼上沒有時間的歌詞後，按「⏱ 自動套用時間」，會從歌詞資料庫找同一首歌的時間對上去，你的翻譯會保留。</li>
         <li>不知道時間沒關係，先不寫，存好後按「對時」邊聽邊按就好。</li>
         <li>網路上下載的 LRC 歌詞檔可以直接貼進來。</li>
@@ -388,6 +390,7 @@ dialog::backdrop{background:rgba(8,12,24,.55)}
     <textarea id="bLinks" rows="5" spellcheck="false" placeholder="https://youtu.be/…&#10;https://www.youtube.com/watch?v=…"></textarea>
     <label>加到資料夾<select id="bFolder"></select></label>
     <label class="check"><input type="checkbox" id="bAuto" checked> 自動找歌詞，並標上假名</label>
+    <label class="check"><input type="checkbox" id="bTrans" checked> 也自動翻譯成中文（免費額度每天大約 3～5 首）</label>
     <div id="bLog" class="blog" hidden></div>
     <div class="row end"><button id="bClose" class="ghost" type="button">關閉</button><button id="bGo" class="primary" type="button">加入歌單</button></div>
   </div>
@@ -957,10 +960,16 @@ function annotate(tok,text){
 async function addKana(text){
   if(!tokP&&!window.__kanaWarned){window.__kanaWarned=true;toast('第一次使用要下載假名字典（約 18 MB），請稍等…',6000)}
   const tok=await getTokenizer();
+  let prev=null; // timestamp prefix of the last lyric line, so Chinese lines under it are left alone
   return String(text).split('\n').map(line=>{
-    if(/^\s*[>＞]/.test(line)||/[{《]/.test(line))return line;
+    if(!line.trim())return line;
+    if(/^\s*[>＞]/.test(line))return line;
     const m=line.match(/^(\s*(?:\[[^\]]*\]\s*)*)(.*)$/);
-    if(looksChinese(m[2]))return line;
+    const ts=m[1].trim();
+    if(/^\[[a-z]+:/i.test(ts))return line;
+    if(prev!==null&&looksChinese(m[2])&&(ts===''||ts===prev))return line;
+    prev=ts;
+    if(/[{《]/.test(m[2]))return line;
     return m[1]+annotate(tok,m[2]);
   }).join('\n');
 }
@@ -1022,6 +1031,62 @@ function alignTimes(mine,ref){ // mine: parsed lines; ref: parsed lines with t. 
   }
   return {times:t,hit};
 }
+// ---------- machine translation (MyMemory, free, no key) ----------
+const trCache=new Map();
+function decodeEntities(t){const ta=document.createElement('textarea');ta.innerHTML=t;return ta.value}
+async function translateLine(text){
+  const clean=String(text).replace(/\{[^}]*\}|《[^》]*》|[|｜]/g,'').replace(/\s+/g,' ').trim();
+  if(!clean||/^[♪\s]+$/.test(clean))return '';
+  if(trCache.has(clean))return trCache.get(clean);
+  const src=KANA_RE.test(clean)?'ja':/[a-z]/i.test(clean)?'en':'ja';
+  const r=await fetch('https://api.mymemory.translated.net/get?'+new URLSearchParams({q:clean,langpair:src+'|zh-TW'}));
+  if(r.status===429)throw new Error('quota');
+  if(!r.ok)throw new Error('http');
+  const j=await r.json();
+  const raw=(j&&j.responseData&&j.responseData.translatedText)||'';
+  if(+j.responseStatus===429||/MYMEMORY WARNING|QUOTA|USED ALL AVAILABLE/i.test(raw))throw new Error('quota');
+  if(j.responseStatus&&+j.responseStatus!==200)throw new Error('http');
+  let out=decodeEntities(raw).trim();
+  if(out===clean)out='';
+  trCache.set(clean,out);
+  return out;
+}
+// Fills in a translation for every lyric line that has none. Stops early (keeping what it has) if the daily quota runs out.
+async function translateLyrics(text,onProgress){
+  const ls=parseLyrics(text);
+  const todo=ls.filter(l=>l.jp&&!l.tr);
+  let done=0,quota=false,failed=0;
+  const uniq=[...new Set(todo.map(l=>l.jp))];
+  const got=new Map();
+  let k=0;
+  async function worker(){
+    while(k<uniq.length&&!quota){
+      const jp=uniq[k++];
+      try{got.set(jp,await translateLine(jp))}
+      catch(e){if(e.message==='quota')quota=true;else failed++}
+      done++;onProgress&&onProgress(done,uniq.length);
+    }
+  }
+  await Promise.all([worker(),worker(),worker()]);
+  let filled=0;
+  for(const l of todo){const t=got.get(l.jp);if(t){l.tr=t;filled++}}
+  return {text:filled?serialize(ls):text,filled,total:todo.length,quota,failed};
+}
+$('#fTrans').onclick=async()=>{
+  const box=$('#fResults'),btn=$('#fTrans');
+  if(!$('#fLyrics').value.trim()){box.hidden=false;box.innerHTML='<div class="note">先把歌詞貼進上面的框框。</div>';return}
+  btn.disabled=true;box.hidden=false;box.innerHTML='<div class="note">翻譯中…</div>';
+  let r;
+  try{r=await translateLyrics($('#fLyrics').value,(d,n)=>{box.innerHTML=`<div class="note">翻譯中… ${d} / ${n}</div>`})}
+  catch(e){box.innerHTML='<div class="note">連不上翻譯服務，請確認有網路，或稍後再試。</div>';btn.disabled=false;return}
+  btn.disabled=false;
+  if(!r.total){box.innerHTML='<div class="note">每一句都已經有翻譯了。想重新翻譯的話，先刪掉那幾行「&gt;」開頭的中文。</div>';return}
+  $('#fLyrics').value=r.text;updatePreview();
+  let msg=`翻好 ${r.filled} / ${r.total} 句，按「儲存」生效。機器翻譯比較直白，翻得怪的句子可以直接在框框裡改。`;
+  if(r.quota)msg+=' 今天的免費翻譯額度用完了，剩下的明天再按一次「自動翻譯」就好，已翻的不會重翻。';
+  else if(r.failed)msg+=` 有 ${r.failed} 句沒翻成功，可以再按一次。`;
+  box.innerHTML=`<div class="note">${esc(msg)}</div>`;
+};
 $('#fSync').onclick=async()=>{
   const title=$('#fTitle').value.trim(),artist=$('#fArtist').value.trim();
   const box=$('#fResults');box.hidden=false;
@@ -1107,7 +1172,7 @@ $('#bGo').onclick=async()=>{
   const names=$('#bNames').value.split('\n').map(x=>x.trim()).filter(Boolean);
   if(!files.length&&!links.length&&!names.length){toast('先選音檔、貼歌名或貼連結');return}
   batchBusy=true;$('#bGo').disabled=true;$('#bLog').innerHTML='';
-  const auto=$('#bAuto').checked;
+  const auto=$('#bAuto').checked,wantTr=$('#bTrans').checked;let trQuota=false;
   const wasEmpty=!S.songs.length;
   const lrc={};
   for(const f of files.filter(f=>/\.lrc$/i.test(f.name)))lrc[baseName(f.name).toLowerCase()]=await f.text();
@@ -1146,6 +1211,14 @@ $('#bGo').onclick=async()=>{
       }
       if(s.lyrics){
         try{s.lyrics=await addKana(s.lyrics)}catch(e){blog('✗ 假名字典載入失敗');}
+        if(wantTr&&!trQuota){
+          try{
+            const r=await translateLyrics(s.lyrics);
+            s.lyrics=r.text;
+            if(r.quota){trQuota=true;blog('✗ 今天的免費翻譯額度用完了。從「'+s.title+'」開始還沒翻完的歌，明天到「編輯」按「🌐 自動翻譯」就好')}
+            else if(r.filled)blog('✓ 翻譯好了：'+s.title);
+          }catch(e){blog('✗ 連不上翻譯服務：'+s.title)}
+        }
       }
       save();
       if(S.songs[S.cur]===s){renderLyrics();renderNow()}
