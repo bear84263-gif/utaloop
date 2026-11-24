@@ -468,7 +468,7 @@ dialog::backdrop{background:rgba(8,12,24,.55)}
       <p id="syncStatus" class="sync-status">還沒開啟。開啟後，每台裝置的歌單會自動保持一樣（音檔除外）。</p>
       <div id="syncSetup">
         <ol class="sync-steps">
-          <li>打開 <a href="https://github.com/settings/tokens/new?scopes=gist&amp;description=utaloop" target="_blank" rel="noopener">GitHub 建立金鑰頁面</a>（已經幫你勾好「gist」）。</li>
+          <li>打開 <a id="tokLink" href="https://github.com/settings/tokens/new?scopes=gist&amp;description=utaloop" target="_blank" rel="noopener">GitHub 建立金鑰頁面</a>（已經幫你勾好「gist」）。</li>
           <li>「Expiration」選 <b>No expiration</b>（不過期），拉到最下面按「Generate token」。</li>
           <li>複製出現的那串字（ghp_ 開頭），貼到下面，按「開啟同步」。</li>
         </ol>
@@ -1642,6 +1642,8 @@ $('#syncConnect').onclick=async()=>{
   if(!syncErr)toast('雲端同步已開啟');
 };
 $('#syncNow').onclick=()=>syncNow(true);
+// GitHub rejects a token name that already exists, so give each new one a unique name.
+$('#tokLink').addEventListener('click',()=>{const d=new Date(),p=n=>String(n).padStart(2,'0');$('#tokLink').href='https://github.com/settings/tokens/new?scopes=gist&description='+encodeURIComponent('utaloop '+d.getFullYear()+'-'+p(d.getMonth()+1)+'-'+p(d.getDate())+' '+p(d.getHours())+p(d.getMinutes())+p(d.getSeconds()))},true);
 $('#syncOff').onclick=()=>{
   const b=$('#syncOff');
   if(b.dataset.armed!=='1'){b.dataset.armed='1';b.textContent='確定關閉？';return}
